@@ -1,15 +1,14 @@
 """
 src/ai/strategy/goal_selector.py
 Tanggung jawab: Menentukan State Machine / AIMode aktif (LOOT, COMBAT, RETREAT, SURVIVAL)
-               dan memodifikasi utilitas aksi secara konsisten untuk mencapai tujuan taktis.
-               Mendukung bypass kenaikan utilitas serang khusus untuk finisher tangan kosong.
+ dan memodifikasi utilitas aksi secara konsisten untuk mencapai tujuan taktis.
 """
 
 import logging
 from typing import List, Tuple
 from src.models.game_state import GameState
 from src.models.action import Action
-from src.config.constants import HP_EMERGENCY_THRESHOLD
+from src.config.constants import HP_RETREAT_THRESHOLD
 
 logger = logging.getLogger("ClawRoyale.GoalSelector")
 
@@ -23,12 +22,11 @@ class GoalSelector:
         visible_enemies = state.visible_enemies
         current_region = state.current_region
         
-        # Hitung musuh di region yang sama dengan kita
         enemies_same_region = sum(1 for e in visible_enemies if e.region_id == current_region.id)
         hp_ratio = player.hp / player.max_hp
 
-        # 1. State RETREAT (HP Kritis <= 35%)
-        if hp_ratio <= 0.35 or enemies_same_region >= 2:
+        # [REVISI AUDIT]: Menyelaraskan ambang batas dengan RetreatStrategy agar sinkron
+        if hp_ratio <= HP_RETREAT_THRESHOLD or enemies_same_region >= 2:
             return "RETREAT"
 
         # 2. State LOOT (Prioritas Perlengkapan)
@@ -57,7 +55,6 @@ class GoalSelector:
             act_type = action.action_type
             new_utility = utility
 
-            # Penerapan Modifikasi Skor Berdasarkan State Machine
             if mode == "RETREAT":
                 if act_type == "move":
                     new_utility += 100.0
@@ -70,11 +67,6 @@ class GoalSelector:
                 elif act_type == "explore":
                     new_utility += 50.0
                 elif act_type == "attack":
-                    # ==================================================================
-                    # BYPASS LOOT ATTACK (UNARMED FINISHER):
-                    # Jika ada peluang membunuh target sekarat (HP <= 5) satu area,
-                    # bypass penalti menyerang dan dorong skor ke utilitas tertinggi (+250)!
-                    # ==================================================================
                     target_id = action.data.get("targetId")
                     target_enemy = next((e for e in state.visible_enemies if e.id == target_id), None)
                     
@@ -85,10 +77,10 @@ class GoalSelector:
                     )
                     
                     if is_unarmed_finisher:
-                        new_utility += 250.0  # Dongkrak mutlak agar segera dipukul mati!
+                        new_utility += 250.0
                         logger.info(f"[AIMODE] Memicu peluang eksekusi FINISHER tangan kosong pada {target_enemy.name}!")
                     else:
-                        new_utility -= 300.0  # Tetap haram menyerang musuh sehat tanpa senjata
+                        new_utility -= 300.0
 
             elif mode == "SURVIVAL":
                 if act_type == "move":
@@ -102,6 +94,5 @@ class GoalSelector:
 
             adjusted.append((action, max(0.1, new_utility)))
 
-        # Urutkan kembali kandidat berdasarkan utilitas tertinggi
         adjusted.sort(key=lambda x: x[1], reverse=True)
         return adjusted
