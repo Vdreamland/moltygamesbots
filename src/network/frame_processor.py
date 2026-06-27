@@ -28,15 +28,29 @@ class FrameProcessor:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        # Deteksi hibrida Game State Frame
+        # --- PENYEMPURNAAN FILTER GAME STATE ---
         is_game_state = False
         if isinstance(payload, dict):
-            if "self" in payload:
-                is_game_state = True
-            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
-                is_game_state = True
+            frame_type = str(payload.get("type", "")).lower()
+            
+            # Jika tipe frame adalah kontrol resmi, dipastikan BUKAN game state (mencegah TURN 00)
+            if frame_type in [
+                "can_act_changed", "action_result", "error", "welcome", 
+                "game_ended", "game_settled", "chat", "whisper", "talk", 
+                "broadcast", "ping", "pong"
+            ]:
+                is_game_state = False
+            else:
+                # Fallback pencarian objek utama "self" untuk kompatibilitas hibrida
+                if "self" in payload:
+                    is_game_state = True
+                elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                    is_game_state = True
+                elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
+                    is_game_state = True
+                elif frame_type in ["agent_view", "state_update", "game_state"]:
+                    is_game_state = True
+        # ----------------------------------------
 
         if is_game_state:
             state = GameState(payload)
@@ -161,8 +175,3 @@ class FrameProcessor:
                     "type": "hello",
                     "entryType": "free"
                 }
-                await self.client.websocket.send(json.dumps(join_payload))
-                logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME" or decision_lower == "already_in_game":
-                logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
-            return
