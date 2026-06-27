@@ -4,7 +4,7 @@ Tanggung jawab: Memformat dan mencetak visualisasi data taktis agen per turn
                dalam bentuk log bergulir (rolling logs) yang terstruktur, rapi, dan padat angka.
                Mendukung rincian tas, pertahanan DEF (Armor), jumlah Kills, Senjata, dan Zirah terpasang.
                Menerapkan lokalisasi nama region otomatis (Fog of War) tanpa penginputan manual.
-               Kini mendukung pengelompokan item kembar (contoh: Potion x2).
+               Kini mendukung penyaringan item terpasang dari tas agar sinkron 100% dengan GUI game.
 """
 
 from typing import Optional
@@ -54,15 +54,26 @@ class GUILogger:
                 thought = '"Sedang menunggu cooldown aksi selesai"'
             cooldown_status = "Menunggu Cooldown (30s)" if not can_act else "SIAP BERTINDAK!"
         
-        # [PERBAIKAN VISUAL]: Pengelompokan daftar isi tas agar rapi (Contoh: Potion x2)
+        # Ambil ID senjata dan zirah yang sedang di-equip untuk penyaringan
+        eq_weapon_id = player.equipped_weapon.id if player.equipped_weapon else None
+        eq_armor_id = player.equipped_armor.id if player.equipped_armor else None
+
+        # [PERBAIKAN SINKRONISASI TAS]: Pengelompokan daftar isi tas dengan menyaring item terpasang agar tidak double count
         bag_counts = {}
+        actual_bag_slots = 0
         for item in player.inventory:
+            # Jika item sedang di-equip di badan, jangan masukkan ke daftar visual isi tas
+            if item.id in [eq_weapon_id, eq_armor_id]:
+                continue
+            
             itype = getattr(item, 'item_type', getattr(item, 'type', 'item'))
             key = f"{item.name} ({itype})"
             bag_counts[key] = bag_counts.get(key, 0) + 1
+            actual_bag_slots += 1
+            
         bag_items_desc = ", ".join([f"{key} x{count}" for key, count in bag_counts.items()]) if bag_counts else "None"
 
-        # [PERBAIKAN VISUAL]: Pengelompokan daftar barang di tanah agar rapi
+        # Pengelompokan daftar barang di tanah agar rapi
         ground_items = getattr(region, "items", [])
         ground_counts = {}
         for item in ground_items:
@@ -89,8 +100,8 @@ class GUILogger:
         print("\n" + "-"*65)
         print(f"[TURN {state.turn:02d}] Lokasi: {region.name} ({region.id[:8]}...)")
         print("-"*65)
-        # SINKRONISASI VISUAL: Menampilkan stats fisik lengkap
-        print(f" Stat Fisik : HP: {player.hp}/{player.max_hp} | EP: {player.ep}/{player.max_ep} | Tas: {len(player.inventory)}/10 | DEF: {player.defense} | Kills: {player.kills}")
+        # SINKRONISASI VISUAL: Menampilkan stats fisik lengkap (Tas disinkronkan ke actual_bag_slots)
+        print(f" Stat Fisik : HP: {player.hp}/{player.max_hp} | EP: {player.ep}/{player.max_ep} | Tas: {actual_bag_slots}/10 | DEF: {player.defense} | Kills: {player.kills}")
         print(f" Isi Tas    : {bag_items_desc}")
         print(f" Senjata    : {player.equipped_weapon.name if player.equipped_weapon else 'None'}")
         print(f" Zirah      : {player.equipped_armor.name if player.equipped_armor else 'None'}")
