@@ -39,7 +39,8 @@ class ClawRoyaleWSClient:
         self.reconnect_attempts = 0
         self._dead_flag_logged = False
         self._finished_flag_logged = False
-        self._force_long_cooldown = False # Flag khusus untuk menangani Error 4003 IP Limit
+        self._force_long_cooldown = False
+        self.can_act = True # Inisialisasi status tindakan default
 
     async def connect_and_loop(self):
         self.is_running = True
@@ -192,6 +193,34 @@ class ClawRoyaleWSClient:
                 self._force_long_cooldown = True
             return
             
+        elif frame_type == "action_result":
+            # [REVISI SINKRONISASI FLAT FRAME]: Membaca data secara hibrida dari root level (Flat Frame) maupun nested data
+            success = payload.get("success", payload.get("data", {}).get("success", True))
+            reason = payload.get("reason", payload.get("data", {}).get("reason", "None"))
+            cd_rem = payload.get("cooldownRemainingMs", payload.get("data", {}).get("cooldownRemainingMs"))
+            can_act = payload.get("canAct", payload.get("can_act", payload.get("data", {}).get("canAct", True)))
+            
+            self.can_act = can_act
+            
+            if cd_rem is not None:
+                self.brain.local_cooldown_end = time.time() + (float(cd_rem) / 1000.0)
+                
+            if not success:
+                logger.error(f"[WS SERVER_ACK] GAGAL: {reason}")
+                self.brain.planner.clear(reason=f"Server Reject ({reason})")
+            else:
+                logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
+            return
+
+        elif frame_type == "can_act_changed":
+            # [BARU]: Sinkronisasi cooldown real-time saat cooldown aksi selesai
+            can_act = payload.get("canAct", payload.get("can_act", True))
+            self.can_act = can_act
+            if can_act:
+                self.brain.local_cooldown_end = time.time()
+                logger.info("[WS] Cooldown selesai. Agen SIAP BERTINDAK!")
+            return
+            
         elif frame_type == "game_ended":
             logger.info("\n=== PERTANDINGAN SELESAI (GAME_ENDED FRAME) ===")
             self.brain.planner.clear(reason="Game Ended")
@@ -234,22 +263,6 @@ class ClawRoyaleWSClient:
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
             elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME" or decision_lower == "already_in_game":
                 logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
-            return
-
-        elif frame_type == "action_result":
-            data_block = payload.get("data", {})
-            success = data_block.get("success", False)
-            reason = data_block.get("reason", "None")
-            cd_rem = data_block.get("cooldownRemainingMs")
-            
-            if cd_rem is not None:
-                self.brain.local_cooldown_end = time.time() + (cd_rem / 1000.0)
-                
-            if not success:
-                logger.error(f"[WS SERVER_ACK] GAGAL: {reason}")
-                self.brain.planner.clear(reason=f"Server Reject ({reason})")
-            else:
-                logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
 
     async def send_action(self, action):
