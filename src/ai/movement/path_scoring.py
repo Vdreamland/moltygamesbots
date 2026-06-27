@@ -1,8 +1,8 @@
 """
 src/ai/movement/path_scoring.py
 Tanggung jawab: Menilai kelayakan jalur wilayah tetangga secara matematis.
-               Mempertimbangkan EP Cost, Ground Loot, risiko musuh,
-               dan mengarahkan rute menuju Ruins jika berada dalam LOOT MODE.
+ Mempertimbangkan EP Cost, Ground Loot, risiko musuh,
+ dan mengarahkan rute menuju Ruins jika berada dalam LOOT MODE.
 """
 
 import logging
@@ -21,53 +21,53 @@ class PathScoring:
         score = 0.0
         current_turn = state.turn
 
-        # 1. Penilaian Berdasarkan Badai/Storm
         if region_id in state.pending_deathzones:
-            score -= 150.0  # Penalti berat untuk area badai mendekat
+            score -= 150.0
 
-        # Penalti Musuh Aktif Terlihat
         active_enemies_in_target = sum(1 for e in state.visible_enemies if e.region_id == region_id)
         if active_enemies_in_target > 0:
             score -= (active_enemies_in_target * 150.0)
 
-        # 3. Penilaian Berdasarkan Memori Bahaya Musuh (Retreat Memory Rule 13I)
         if memory.is_region_dangerous_by_enemy_memory(region_id, current_turn):
-            score -= 100.0  # Penalti jika pernah ada musuh dalam 5 turn terakhir
-            
-        # 4. Aturan Larangan No-Loop (Retreat Rule 13D)
+            score -= 100.0
+
         if memory.is_loop_forbidden(region_id, current_turn):
             score -= 500.0
 
-        # 5. Potensi Loot (Ground Items)
+        # [REVISI]: Ambil item tanah dari map saat ini, atau ambil dari memori jika memeriksa map sebelah
+        target_items = []
         if region_id == state.current_region.id:
-            for item in state.current_region.items:
-                if item.type == "weapon":
-                    score += 25.0
-                elif "recovery" in item.type:
-                    score += 20.0
-                else:
-                    score += 10.0
+            target_items = state.current_region.items
+        else:
+            target_items = memory.get_known_loot(region_id)
 
-        # ==========================================================================
-        # NAVIGASI TERARAH (LOOT MODE ROUTING):
-        # Jika tidak bersenjata, beri bonus besar (+150) ke region berisi ruins aktif
-        # ==========================================================================
+        item_ids_in_bag = {item.id for item in state.player.inventory}
+
+        # Beri nilai taktis jalur berdasarkan potensi barang yang diingat/terlihat di tanah
+        for item in target_items:
+            if item.id in item_ids_in_bag:
+                continue
+
+            if item.type == "weapon":
+                score += 25.0
+            elif "recovery" in item.type:
+                score += 20.0
+            else:
+                score += 10.0
+
         from src.ai.strategy.goal_selector import GoalSelector
         current_mode = GoalSelector.get_current_mode(state)
         
         ruin_bonus = 0.0
         if current_mode == "LOOT":
-            # Cari apakah region target memiliki reruntuhan (ruin) aktif
             is_target_ruin = any(ruin.ruin_id == region_id and not ruin.is_empty for ruin in state.visible_ruins)
             if is_target_ruin:
                 ruin_bonus = 150.0
                 logger.info(f"[PATH SCORING] Region {region_id} diberi bonus Reruntuhan (+150) karena dalam LOOT MODE.")
 
-        # 6. Nilai Penjelajahan (Eksplorasi & Anti-Oscillation)
         explore_score = ExplorationStrategy.calculate_exploration_score(region_id, memory, current_turn)
         score += explore_score + ruin_bonus
 
-        # 7. Biaya Perjalanan (Travel EP Cost)
         is_water_or_storm = region_id in state.pending_deathzones or region_id.lower().startswith("water")
         if is_water_or_storm:
             score -= 40.0
