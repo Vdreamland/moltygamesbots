@@ -1,43 +1,59 @@
 """
 src/ai/planner.py
-Tanggung jawab: Mengelola aksi berlapis (multi-step action, queue task, action chaining).
-               Contoh: Move -> Pickup -> Equip -> Attack.
+Tanggung jawab: Mengelola multi-step action, antrian tugas (queue), 
+serta validasi akhir sebelum aksi diteruskan ke network layer.
 """
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Deque
+from collections import deque
+from src.models.game_state import GameState
 from src.models.action import Action
 
 logger = logging.getLogger("ClawRoyale.Planner")
 
 class Planner:
     def __init__(self):
-        self.action_queue: List[Action] = []
+        self.action_queue: Deque[Action] = deque()
 
-    def queue_action(self, action: Action):
-        """Menambahkan aksi ke dalam antrean rencana"""
-        self.action_queue.append(action)
-        logger.debug(f"[PLANNER] Aksi ditambahkan ke rencana: {action.action_type}")
+    def add_actions(self, actions: List[Action]):
+        """Menambahkan rangkaian aksi ke dalam queue."""
+        for action in actions:
+            self.action_queue.append(action)
+        logger.info(f"[PLANNER] Menambahkan {len(actions)} aksi ke queue. Total: {len(self.action_queue)}")
 
-    def queue_chain(self, actions: List[Action]):
-        """Menambahkan rantai aksi sekaligus"""
-        for act in actions:
-            self.queue_action(act)
+    def get_next_action(self, state: GameState) -> Optional[Action]:
+        """
+        Mengambil aksi berikutnya dari queue dengan validasi can_act.
+        Jika bot tidak bisa bertindak, planner menahan queue.
+        """
+        if not self.action_queue:
+            return None
 
-    def has_actions(self) -> bool:
-        """Memeriksa apakah ada rencana aksi yang tertunda"""
-        return len(self.action_queue) > 0
+        if not state.player_can_act:
+            next_action = self.action_queue[0]
+            if not getattr(next_action, "is_free_action", False):
+                logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis.")
+                return None
 
-    def get_next_action(self) -> Optional[Action]:
-        """Mengambil aksi berikutnya dari antrean"""
-        if self.has_actions():
-            next_act = self.action_queue.pop(0)
-            logger.info(f"[PLANNER] Menjalankan aksi terencana berikutnya: {next_act.action_type}")
-            return next_act
-        return None
+        action = self.action_queue.popleft()
+        logger.info(f"[PLANNER] Mengambil aksi: {type(action).__name__} | Thought: {getattr(action, 'thought', 'None')}")
+        return action
 
     def clear(self, reason: str = ""):
-        """Mengosongkan seluruh antrean rencana (biasanya saat emergency / retreat)"""
-        if self.action_queue:
-            self.action_queue.clear()
-            logger.warning(f"[PLANNER] Rencana aksi DIKOSONGKAN. Alasan: {reason}")
+        """
+        [REVISI]: Menambahkan parameter 'reason' agar sesuai dengan pemanggilan dari Brain.
+        Membatalkan seluruh rencana aksi (dipanggil saat Emergency Mode).
+        """
+        if reason:
+            logger.warning(f"[PLANNER] Queue dibersihkan secara paksa oleh Brain. Alasan: {reason}")
+        else:
+            logger.warning("[PLANNER] Queue dibersihkan secara paksa oleh Brain.")
+        self.action_queue.clear()
+
+    def has_actions(self) -> bool:
+        """Memeriksa apakah ada aksi tersisa di antrian."""
+        return len(self.action_queue) > 0
+
+    def has_pending_actions(self) -> bool:
+        return len(self.action_queue) > 0
