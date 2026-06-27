@@ -9,11 +9,12 @@ import asyncio
 import json
 import logging
 import time
+import traceback
 import websockets
 from typing import Optional, Any
 from src.models.game_state import GameState
 from src.ai.brain import Brain
-from src.network.gui_logger import GUILogger  # [REVISI GUI]: Import GUI Logger dikembalikan
+from src.network.gui_logger import GUILogger
 from src.config.constants import (
     WS_BASE_URL, API_KEY, PING_INTERVAL_SECONDS, 
     WS_TIMEOUT_SECONDS, MAX_CONNECTION_RETRIES, RECONNECT_DELAY_SECONDS
@@ -103,6 +104,29 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
+        is_game_state = False
+        if isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
+                is_game_state = True
+
+        if is_game_state:
+            state = GameState(payload)
+            action = self.brain.think(state)
+            
+            # [REVISI DEBUG GUI]: Ubah dari debug tersembunyi menjadi ERROR yang meledak dengan Traceback penuh
+            try:
+                GUILogger.log_turn(state, action)
+            except Exception as e:
+                logger.error(f"[GUI ERROR] Terjadi kerusakan pada src/network/gui_logger.py:\n{traceback.format_exc()}")
+
+            if action:
+                await self.send_action(action)
+            return
+
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
         if frame_type in ["chat", "whisper", "talk", "broadcast"]:
@@ -136,22 +160,11 @@ class ClawRoyaleWSClient:
             return
 
         elif frame_type == "action_result":
-            # [REVISI ACK PARSER]: Baca format Flat JSON (root) terlebih dahulu, lalu Fallback ke Nested (data)
-            if "success" in payload:
-                success = payload.get("success", False)
-                reason = payload.get("reason", "None")
-                cd_rem = payload.get("cooldownRemainingMs")
-            else:
-                data_block = payload.get("data", {})
-                if isinstance(data_block, dict):
-                    success = data_block.get("success", False)
-                    reason = data_block.get("reason", "None")
-                    cd_rem = data_block.get("cooldownRemainingMs")
-                else:
-                    success = False
-                    reason = "Unknown format"
-                    cd_rem = None
-
+            data_block = payload.get("data", {})
+            success = data_block.get("success", False)
+            reason = data_block.get("reason", "None")
+            cd_rem = data_block.get("cooldownRemainingMs")
+            
             if cd_rem is not None:
                 self.brain.local_cooldown_end = time.time() + (cd_rem / 1000.0)
                 
@@ -161,28 +174,6 @@ class ClawRoyaleWSClient:
             else:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
-
-        is_game_state = False
-        if frame_type in ["agent_view", "turn_advanced"]:
-            is_game_state = True
-        elif isinstance(payload, dict):
-            if "self" in payload:
-                is_game_state = True
-            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-
-        if is_game_state:
-            state = GameState(payload)
-            action = self.brain.think(state)
-            
-            # [REVISI GUI MURNI]: Cetak papan UI Console Stats Player ke layar setiap kali state baru masuk
-            try:
-                GUILogger.log_turn(state, action)
-            except Exception as e:
-                logger.debug(f"[GUI ERROR] Gagal merender UI Player Stats: {str(e)}")
-
-            if action:
-                await self.send_action(action)
 
     async def send_action(self, action):
         if not self.websocket or is_ws_closed(self.websocket):
