@@ -1,85 +1,73 @@
 """
 src/ai/inventory/loot_strategy.py
-Tanggung jawab: Menganalisis ground items di region saat ini dan menyaring prioritas loot.
-               Mengamankan taktik penjarahan "pemberani tapi minim risiko" dengan hanya
-               membatasi loot jika musuh berada di region yang sama.
+Tanggung jawab: Menganalisis ketersediaan item di wilayah tanah saat ini,
+ menentukan kelayakan pungut (Pickup Rules) berdasarkan slot tas tersedia,
+ dan memprioritaskan item berharga taktis tinggi.
 """
 
 import logging
 from typing import Optional, Tuple
 from src.models.game_state import GameState
-from src.models.entities import Item, Weapon, Potion
 from src.models.action import PickupAction
-from src.ai.inventory.weapon_strategy import WeaponStrategy
-from src.config.constants import MAX_INVENTORY_SLOTS, HP_RETREAT_THRESHOLD
+from src.models.entities import Weapon, Armor, Potion
+from src.config.constants import MAX_INVENTORY_SLOTS
 
 logger = logging.getLogger("ClawRoyale.LootStrategy")
 
 class LootStrategy:
     @staticmethod
     def evaluate_ground_loot(state: GameState) -> Optional[Tuple[PickupAction, float]]:
-        """
-        Menyaring barang di tanah pada region aktif dan mengembalikan (PickupAction, skor_barang).
-        """
         player = state.player
-        ground_items = state.current_region.items
+        current_region = state.current_region
 
-        if not ground_items:
-            return None
-
-        # 1. Pengaman Batas Kapasitas Tas (Max 10)
         if len(player.inventory) >= MAX_INVENTORY_SLOTS:
-            logger.debug("[LOOT] Diabaikan: Kapasitas tas sudah penuh (10/10).")
+            logger.warning("[LOOT] Tas penuh! Mematikan evaluasi looting.")
             return None
 
-        # ==========================================================================
-        # PENGAMAN LOOT MINIM RISIKO (PEMBERANI):
-        # Filter hanya musuh yang berada di region yang sama dengan kita.
-        # Jika di region kita 0 musuh, kita sangat aman untuk memungut barang.
-        # ==========================================================================
-        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
-        hp_ratio = player.hp / player.max_hp
-        
-        # Bot hanya menunda loot jika HP kritis (<25%) ATAU jika ada musuh nyata berdiri satu region dengan kita
-        if hp_ratio <= HP_RETREAT_THRESHOLD or len(enemies_in_same_region) >= 1:
-            logger.debug("[LOOT] Ditangguhkan: Ada ancaman musuh satu ruangan atau HP kritis.")
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == current_region.id]
+        if len(enemies_in_same_region) >= 1:
+            logger.warning("[LOOT] Ada musuh di satu region. Menunda looting untuk keamanan.")
             return None
 
-        # Urutan Penilaian Kategori Loot (Loot Priority)
-        best_item: Optional[Item] = None
-        best_item_score = -1.0
+        # [REVISI AUDIT]: Ambil daftar ID item yang sudah aman ada di dalam tas
+        item_ids_in_bag = {item.id for item in player.inventory}
 
-        for item in ground_items:
+        best_item = None
+        best_score = -1.0
+
+        for item in current_region.items:
+            # [REVISI AUDIT]: Cegah pengambilan ganda (Ignore item yang sudah masuk tas)
+            if item.id in item_ids_in_bag:
+                continue
+
             score = 0.0
             
             if isinstance(item, Weapon):
-                if WeaponStrategy.should_upgrade(player.equipped_weapon, item):
-                    score = 100.0 + (item.tier * 10.0)
+                if player.equipped_weapon is None:
+                    score = 100.0 + (item.tier * 20.0)
                 else:
-                    score = 5.0
+                    score = 20.0 + (item.tier * 10.0)
+                    
+            elif isinstance(item, Armor):
+                if player.equipped_armor is None:
+                    score = 90.0 + (item.tier * 20.0)
+                else:
+                    score = 15.0 + (item.tier * 10.0)
                     
             elif isinstance(item, Potion):
-                if item.recovery_type == "hp":
-                    score = 80.0
-                elif item.recovery_type == "ep":
-                    score = 70.0
-                    
-            elif "relic" in item.type or "relic" in item.name.lower():
-                score = 50.0
+                score = 50.0 + (item.tier * 10.0)
+                
             else:
-                score = 20.0
+                score = 5.0
 
-            if score > best_item_score:
-                best_item_score = score
+            if score > best_score:
+                best_score = score
                 best_item = item
 
-        # Ambil item jika bernilai baik
-        if best_item and best_item_score > 10.0:
-            logger.info(f"[LOOT] Mengunci penjarahan untuk item: {best_item.name} (Skor Dinamis: {best_item_score:.1f}).")
-            action = PickupAction(
+        if best_item and best_score > 0:
+            return PickupAction(
                 item_id=best_item.id,
-                thought=f"Memungut {best_item.name} dari tanah karena bernilai taktis tinggi (Skor: {best_item_score:.1f})."
-            )
-            return action, best_item_score
+                thought=f"Memungut {best_item.name} dari tanah karena bernilai taktis tinggi (Skor: {best_score:.1f})."
+            ), best_score
 
         return None
