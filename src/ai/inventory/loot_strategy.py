@@ -29,26 +29,50 @@ class LootStrategy:
             logger.warning("[LOOT] Ada musuh di satu region. Menunda looting untuk keamanan.")
             return None
 
-        # [REVISI AUDIT]: Ambil daftar ID item yang sudah aman ada di dalam tas
         item_ids_in_bag = {item.id for item in player.inventory}
 
         best_item = None
         best_score = -1.0
 
         for item in current_region.items:
-            # [REVISI AUDIT]: Cegah pengambilan ganda (Ignore item yang sudah masuk tas)
             if item.id in item_ids_in_bag:
                 continue
 
             score = 0.0
             
             if isinstance(item, Weapon):
+                # [REVISI]: Filter anti-duplikat senjata. Jangan ambil jika sudah memiliki senjata setara/lebih baik.
+                current_weapon = player.equipped_weapon
+                weapons_in_bag = [i for i in player.inventory if isinstance(i, Weapon)]
+                
+                max_owned_weapon_tier = -1
+                if current_weapon:
+                    max_owned_weapon_tier = max(max_owned_weapon_tier, current_weapon.tier)
+                for w in weapons_in_bag:
+                    max_owned_weapon_tier = max(max_owned_weapon_tier, w.tier)
+                
+                if item.tier <= max_owned_weapon_tier:
+                    continue
+
                 if player.equipped_weapon is None:
                     score = 100.0 + (item.tier * 20.0)
                 else:
                     score = 20.0 + (item.tier * 10.0)
                     
             elif isinstance(item, Armor):
+                # [REVISI]: Filter anti-duplikat baju zirah. Jangan ambil jika sudah memiliki zirah setara/lebih baik.
+                current_armor = player.equipped_armor
+                armors_in_bag = [i for i in player.inventory if isinstance(i, Armor)]
+                
+                max_owned_armor_tier = -1
+                if current_armor:
+                    max_owned_armor_tier = max(max_owned_armor_tier, current_armor.tier)
+                for a in armors_in_bag:
+                    max_owned_armor_tier = max(max_owned_armor_tier, a.tier)
+                
+                if item.tier <= max_owned_armor_tier:
+                    continue
+
                 if player.equipped_armor is None:
                     score = 90.0 + (item.tier * 20.0)
                 else:

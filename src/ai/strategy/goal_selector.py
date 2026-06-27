@@ -15,9 +15,6 @@ logger = logging.getLogger("ClawRoyale.GoalSelector")
 class GoalSelector:
     @staticmethod
     def get_current_mode(state: GameState) -> str:
-        """
-        Menentukan mode taktis aktif (State Machine) berdasarkan GameState.
-        """
         player = state.player
         visible_enemies = state.visible_enemies
         current_region = state.current_region
@@ -25,27 +22,20 @@ class GoalSelector:
         enemies_same_region = sum(1 for e in visible_enemies if e.region_id == current_region.id)
         hp_ratio = player.hp / player.max_hp
 
-        # [REVISI AUDIT]: Menyelaraskan ambang batas dengan RetreatStrategy agar sinkron
-        if hp_ratio <= HP_RETREAT_THRESHOLD or enemies_same_region >= 2:
+        # [REVISI]: Hanya aktifkan RETREAT mode jika HP rendah DAN ada musuh di wilayah yang sama
+        if (hp_ratio <= HP_RETREAT_THRESHOLD and enemies_same_region > 0) or enemies_same_region >= 2:
             return "RETREAT"
 
-        # 2. State LOOT (Prioritas Perlengkapan)
         if player.equipped_weapon is None:
             return "LOOT"
 
-        # 3. State SURVIVAL (Late Game / Storm Evac)
         if state.turn >= 71 or current_region.is_death_zone:
             return "SURVIVAL"
 
-        # 4. State COMBAT (Default Armed & Safe)
         return "COMBAT"
 
     @staticmethod
     def select_goal_and_adjust(candidates: List[Tuple[Action, float]], state: GameState) -> List[Tuple[Action, float]]:
-        """
-        Mengambil keputusan State Machine aktif, menerapkan pengali utilitas khusus,
-        dan mengembalikan list kandidat aksi yang telah disesuaikan.
-        """
         mode = GoalSelector.get_current_mode(state)
         logger.info(f"[AIMODE] State Machine Aktif: {mode} (Turn: {state.turn})")
 
