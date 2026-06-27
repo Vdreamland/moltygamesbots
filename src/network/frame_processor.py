@@ -21,7 +21,8 @@ class FrameProcessor:
         self.brain = client.brain
         self._last_turn_dead = None
         self._last_state = None 
-        self._last_action_turn = -1 # Merekam turn terakhir di mana aksi sukses dikirim
+        self._last_action_turn = -1 
+        self._last_dead_game_id = None # Merekam ID pertandingan terakhir di mana kita gugur
 
     async def process_message(self, message: str):
         try:
@@ -83,10 +84,21 @@ class FrameProcessor:
                         logger.error(f"[GUI ERROR] Terjadi kerusakan pada gui_logger:\n{traceback.format_exc()}")
                     self._last_turn_dead = state.turn
                 
-                if not self.client._dead_flag_logged:
-                    logger.info("[WS] Agen GUGUR. Standby di dalam room menunggu server menyelesaikan Match ini...")
-                    self.client._dead_flag_logged = True
+                # [PERBAIKAN FAST RE-QUEUE]: Jika kita dirutekan kembali ke game yang SAMA tempat kita baru saja gugur,
+                # jangan putuskan koneksi lagi (standby) agar tidak memicu pemblokiran IP (Error 4003).
+                if self._last_dead_game_id == state.game_id:
+                    if not self.client._dead_flag_logged:
+                        logger.info("[WS] Masih terikat Match Lock server. Standby menunggu Match ini selesai dari sisi server...")
+                        self.client._dead_flag_logged = True
+                    return
+
+                # Jika ini adalah kematian pertama di game ini, catat ID game dan langsung tutup soket agar auto-reconnect mencari game baru
+                self._last_dead_game_id = state.game_id
+                logger.info("[WS] Agen GUGUR (HP 0). Mencoba keluar dan mengantre langsung ke game baru...")
                 
+                from src.network.websocket import is_ws_closed
+                if self.client.websocket and not is_ws_closed(self.client.websocket):
+                    asyncio.create_task(self.client.websocket.close())
                 return
             # ----------------------------------------------
             
@@ -194,6 +206,7 @@ class FrameProcessor:
                 logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
             else:
                 # Untuk welcome lainnya, kirim hello frame untuk masuk antrean matchmaking
+                self._last_dead_game_id = None # Reset memori kematian karena kita resmi memasuki antrean game baru
                 join_payload = {
                     "type": "hello",
                     "entryType": "free"
