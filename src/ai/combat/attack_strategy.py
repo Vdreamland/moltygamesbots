@@ -27,16 +27,23 @@ class AttackStrategy:
 
         is_kill_opportunity = (
             is_unarmed_finisher or
-            (player.equipped_weapon is not None and target.hp <= 10 and target.region_id == state.current_region.id)
+            (player.equipped_weapon is not None and target.hp <= 25 and target.region_id == state.current_region.id) or
+            (target.equipped_weapon is None and target.region_id == state.current_region.id)
         )
 
         if not player.equipped_weapon and not is_unarmed_finisher:
             logger.warning("[ATTACK CHECK] Ditolak: Agen tidak membawa senjata.")
             return False
 
+        is_target_weak = (
+            target.equipped_weapon is None or
+            target.ep <= 1 or
+            target.hp < player.hp
+        )
+
         hp_ratio = player.hp / player.max_hp
-        if hp_ratio <= HP_RETREAT_THRESHOLD and not is_kill_opportunity:
-            logger.warning(f"[ATTACK CHECK] Ditolak: HP rendah ({player.hp}). Wajib Retreat.")
+        if hp_ratio <= HP_RETREAT_THRESHOLD and not is_kill_opportunity and not is_target_weak:
+            logger.warning(f"[ATTACK CHECK] Ditolak: HP rendah ({player.hp}) melawan musuh kuat. Wajib Retreat.")
             return False
 
         if player.ep <= EP_MIN_RESERVE:
@@ -48,7 +55,9 @@ class AttackStrategy:
             return False
 
         win_prob = WinProbabilityCalculator.calculate(player, target)
-        if win_prob < 0.30 and not is_kill_opportunity:
+        
+        min_win_prob = 0.20 if is_target_weak else 0.30
+        if win_prob < min_win_prob and not is_kill_opportunity:
             logger.warning(f"[ATTACK CHECK] Ditolak: Peluang menang terlalu rendah ({win_prob:.2%}).")
             return False
 

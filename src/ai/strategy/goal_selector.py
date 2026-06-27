@@ -22,8 +22,20 @@ class GoalSelector:
         enemies_same_region = sum(1 for e in visible_enemies if e.region_id == current_region.id)
         hp_ratio = player.hp / player.max_hp
 
-        # [REVISI]: Hanya aktifkan RETREAT mode jika HP rendah DAN ada musuh di wilayah yang sama
-        if (hp_ratio <= HP_RETREAT_THRESHOLD and enemies_same_region > 0) or enemies_same_region >= 2:
+        is_enemy_weak = False
+        if enemies_same_region == 1:
+            primary_enemy = next((e for e in visible_enemies if e.region_id == current_region.id), None)
+            if primary_enemy:
+                from src.ai.combat.win_probability import WinProbabilityCalculator
+                win_prob = WinProbabilityCalculator.calculate(player, primary_enemy)
+                is_enemy_unarmed = (primary_enemy.equipped_weapon is None)
+                is_enemy_exhausted = (primary_enemy.ep <= 1)
+                is_enemy_weaker_hp = (primary_enemy.hp < player.hp)
+                
+                if is_enemy_unarmed or is_enemy_exhausted or (is_enemy_weaker_hp and win_prob >= 0.45):
+                    is_enemy_weak = True
+
+        if (hp_ratio <= HP_RETREAT_THRESHOLD and enemies_same_region > 0 and not is_enemy_weak) or enemies_same_region >= 2:
             return "RETREAT"
 
         if player.equipped_weapon is None:

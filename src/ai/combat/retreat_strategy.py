@@ -34,18 +34,27 @@ class RetreatStrategy:
                 logger.info(f"[RETREAT] Diabaikan demi Finish-Kill pada {primary_enemy.name} (HP: {primary_enemy.hp}).")
                 return None
 
+        is_enemy_weak = False
+        if primary_enemy and same_region_count == 1:
+            is_enemy_unarmed = (primary_enemy.equipped_weapon is None)
+            is_enemy_exhausted = (primary_enemy.ep <= 1)
+            is_enemy_weaker_hp = (primary_enemy.hp < player.hp)
+            
+            if is_enemy_unarmed or is_enemy_exhausted or (is_enemy_weaker_hp and win_prob >= 0.45):
+                is_enemy_weak = True
+
         retreat_reason: Optional[str] = None
         hp_ratio = player.hp / player.max_hp
 
-        # [REVISI]: Hanya retreat karena Low HP jika ada musuh di region yang sama
-        if hp_ratio <= HP_RETREAT_THRESHOLD and same_region_count > 0:
-            retreat_reason = "Low HP with enemy in same region"
+        if hp_ratio <= HP_RETREAT_THRESHOLD and same_region_count > 0 and not is_enemy_weak:
+            retreat_reason = "Low HP with strong enemy in same region"
         elif same_region_count >= 2:
             retreat_reason = "Outnumbered in current region (Enemy >= 2)"
         elif not player.equipped_weapon and same_region_count > 0:
-            retreat_reason = "Unarmed with enemy in same region"
-        elif player.ep <= EP_MIN_RESERVE and same_region_count > 0:
-            retreat_reason = "Out of Energy with enemy in same region"
+            if primary_enemy and primary_enemy.equipped_weapon is not None:
+                retreat_reason = "Unarmed with armed enemy in same region"
+        elif player.ep <= EP_MIN_RESERVE and same_region_count > 0 and not is_enemy_weak:
+            retreat_reason = "Out of Energy with strong enemy"
         elif state.current_region.is_death_zone:
             retreat_reason = "Inside Death Zone"
 
