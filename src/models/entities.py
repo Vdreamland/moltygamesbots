@@ -72,8 +72,8 @@ class Weapon(Item):
         stats = source_name.get("stats", data.get("stats", {})) or {}
         iname = str(source_name.get("name", "")).lower()
 
-        # [REVISI]: Senjata Melee (Dagger, Fists, Sword, Knife, Axe, Spear) memiliki default range = 0 (hanya region sendiri)
-        default_range = 0 if any(keyword in iname for keyword in ["dagger", "fists", "sword", "knife", "axe", "spear"]) else 1
+        # [REVISI]: Senjata Melee (Dagger, Fists, Sword, Knife, Axe, Spear, Katana) memiliki default range = 0 (hanya region sendiri)
+        default_range = 0 if any(keyword in iname for keyword in ["dagger", "fists", "sword", "knife", "axe", "spear", "katana"]) else 1
         w_range = safe_int(stats.get("range", source_name.get("range", default_range)), default_range)
         
         return cls(
@@ -201,7 +201,8 @@ class Region:
             
             iname = str(source_name.get("name", "")).lower()
             
-            is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
+            # [REVISI]: Ditambahkan kata kunci "katana" untuk klasifikasi sebagai Weapon
+            is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear", "katana"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
             is_ep_recovery = any(keyword in iname for keyword in ["snack", "energy", "candy", "soda", "potion_ep"])
@@ -279,7 +280,8 @@ class Agent:
             
             iname = str(source_name.get("name", "")).lower()
             
-            is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
+            # [REVISI]: Ditambahkan kata kunci "katana" untuk klasifikasi inventaris
+            is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear", "katana"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
             is_ep_recovery = any(keyword in iname for keyword in ["snack", "energy", "candy", "soda", "potion_ep"])
@@ -307,7 +309,7 @@ class Agent:
             equipped_weapon=parsed_weapon,
             equipped_armor=parsed_armor,
             inventory=parsed_inventory,
-            is_alive=bool(data.get("isAlive", True)),
+            is_alive=bool(data.get("isAlive", safe_int(data.get("hp", 0)) > 0)),
             region_id=data.get("regionId", ""),
             kills=safe_int(data.get("kills", 0)),
             defense=safe_int(data.get("defense", 0))
