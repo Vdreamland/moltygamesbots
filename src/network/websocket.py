@@ -82,6 +82,7 @@ class ClawRoyaleWSClient:
                     # [BARU - RESET MEMORI GAME BARU]: Bersihkan sisa ingatan/turn game lama dari processor
                     self.processor._last_state = None
                     self.processor._last_turn_dead = None
+                    self.processor._game_over_logged = False
                     
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     

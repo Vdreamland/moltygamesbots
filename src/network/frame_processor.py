@@ -22,7 +22,8 @@ class FrameProcessor:
         self._last_turn_dead = None
         self._last_state = None 
         self._last_action_turn = -1 
-        self._last_dead_game_id = None # Merekam ID pertandingan terakhir di mana kita gugur
+        self._last_dead_game_id = None 
+        self._game_over_logged = False # Mencegah spam cetakan box Game Over raksasa
 
     async def process_message(self, message: str):
         try:
@@ -77,19 +78,26 @@ class FrameProcessor:
             if not state.is_player_alive:
                 self.brain.planner.clear(reason="Agent Gugur (HP 0)")
                 
-                if not self._last_turn_dead == state.turn:
+                # 1. Cetak Kotak Raksasa GAME OVER tepat SEKALI saja sepanjang sisa pertandingan
+                if not self._game_over_logged:
                     try:
                         GUILogger.log_turn(state, None, getattr(self.client, 'can_act', True))
                     except Exception as e:
                         logger.error(f"[GUI ERROR] Terjadi kerusakan pada gui_logger:\n{traceback.format_exc()}")
+                    self._game_over_logged = True
                     self._last_turn_dead = state.turn
-                
-                # [PERBAIKAN FAST RE-QUEUE]: Jika kita dirutekan kembali ke game yang SAMA tempat kita baru saja gugur,
+
+                # 2. Jika kita dirutekan kembali ke game yang SAMA tempat kita baru saja gugur,
                 # jangan putuskan koneksi lagi (standby) agar tidak memicu pemblokiran IP (Error 4003).
                 if self._last_dead_game_id == state.game_id:
                     if not self.client._dead_flag_logged:
                         logger.info("[WS] Masih terikat Match Lock server. Standby menunggu Match ini selesai dari sisi server...")
                         self.client._dead_flag_logged = True
+                    
+                    # Cetak baris tunggal pendek setiap kali turn bertambah untuk menggantikan spam box raksasa
+                    if not self._last_turn_dead == state.turn:
+                        logger.info(f"[WS] Sesi Standby - Menunggu pertandingan selesai dari sisi server... (Turn {state.turn:02d})")
+                        self._last_turn_dead = state.turn
                     return
 
                 # Jika ini adalah kematian pertama di game ini, catat ID game dan langsung tutup soket agar auto-reconnect mencari game baru
