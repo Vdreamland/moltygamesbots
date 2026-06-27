@@ -22,7 +22,8 @@ class RetreatStrategy:
         player = state.player
         visible_enemies = state.visible_enemies
         
-        enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id]
+        # [REVISI]: Tambahkan pengecekan status e.is_alive agar mayat tidak memicu retreat
+        enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id and e.is_alive]
         same_region_count = len(enemies_in_same_region)
         
         primary_enemy = enemies_in_same_region[0] if enemies_in_same_region else (visible_enemies[0] if visible_enemies else None)

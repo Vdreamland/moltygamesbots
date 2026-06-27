@@ -19,19 +19,24 @@ class AttackStrategy:
     def should_attack(state: GameState, target: Agent) -> bool:
         player = state.player
 
+        # [REVISI]: Pastikan target masih hidup
+        if not target.is_alive:
+            logger.debug(f"[ATTACK CHECK] Target {target.name} sudah mati. Serangan dibatalkan.")
+            return False
+
         is_unarmed_finisher = (
             player.equipped_weapon is None and 
             target.hp <= 5 and 
-            target.region_id == state.current_region.id
+            target.region_id == state.current_region.id and
+            target.is_alive
         )
 
         is_kill_opportunity = (
             is_unarmed_finisher or
-            (player.equipped_weapon is not None and target.hp <= 25 and target.region_id == state.current_region.id) or
-            (target.equipped_weapon is None and target.region_id == state.current_region.id)
+            (player.equipped_weapon is not None and target.hp <= 25 and target.region_id == state.current_region.id and target.is_alive) or
+            (target.equipped_weapon is None and target.region_id == state.current_region.id and target.is_alive)
         )
 
-        # [REVISI JANGKAUAN]: Cek apakah target berada di dalam jangkauan senjata murni saat ini
         distance = 0
         if target.region_id != state.current_region.id:
             if target.region_id in state.current_region.connections:
@@ -76,9 +81,10 @@ class AttackStrategy:
 
         is_finish_kill_opportunity = (target.hp < 15 and win_prob > 0.80) or is_kill_opportunity
 
-        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
+        # [REVISI]: Filter musuh aktif/hidup saja
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
         if len(enemies_in_same_region) >= 2 and not is_finish_kill_opportunity:
-            logger.warning(f"[ATTACK CHECK] Ditolak: Terdeteksi {len(enemies_in_same_region)} musuh satu region. Risiko dikepung.")
+            logger.warning(f"[ATTACK CHECK] Ditolak: Terdeteksi {len(enemies_in_same_region)} musuh aktif satu region. Risiko dikepung.")
             return False
 
         logger.info(f"[ATTACK CHECK] Sukses: Diizinkan menyerang {target.name} (Peluang Menang: {win_prob:.2%}).")

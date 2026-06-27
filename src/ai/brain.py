@@ -62,7 +62,8 @@ class Brain:
                 logger.info("[BRAIN] Kondisi membaik. Emergency Mode dinonaktifkan.")
                 self.emergency_mode_active = False
 
-        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
+        # [REVISI]: Filter musuh yang masih hidup saja
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
         if self.planner.has_actions() and not self.emergency_mode_active:
             if enemies_in_same_region:
                 logger.warning("[BRAIN] Musuh terdeteksi di area yang sama selama eksekusi rencana berantai. Membersihkan Planner!")

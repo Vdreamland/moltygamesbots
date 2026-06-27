@@ -24,9 +24,10 @@ class LootStrategy:
             logger.warning("[LOOT] Tas penuh! Mematikan evaluasi looting.")
             return None
 
-        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == current_region.id]
+        # [REVISI]: Tambahkan pengecekan status e.is_alive agar mayat tidak memblokir looting
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == current_region.id and e.is_alive]
         if len(enemies_in_same_region) >= 1:
-            logger.warning("[LOOT] Ada musuh di satu region. Menunda looting untuk keamanan.")
+            logger.warning("[LOOT] Ada musuh aktif di satu region. Menunda looting untuk keamanan.")
             return None
 
         item_ids_in_bag = {item.id for item in player.inventory}
@@ -41,7 +42,6 @@ class LootStrategy:
             score = 0.0
             
             if isinstance(item, Weapon):
-                # [REVISI]: Filter anti-duplikat senjata. Jangan ambil jika sudah memiliki senjata setara/lebih baik.
                 current_weapon = player.equipped_weapon
                 weapons_in_bag = [i for i in player.inventory if isinstance(i, Weapon)]
                 
@@ -60,7 +60,6 @@ class LootStrategy:
                     score = 20.0 + (item.tier * 10.0)
                     
             elif isinstance(item, Armor):
-                # [REVISI]: Filter anti-duplikat baju zirah. Jangan ambil jika sudah memiliki zirah setara/lebih baik.
                 current_armor = player.equipped_armor
                 armors_in_bag = [i for i in player.inventory if isinstance(i, Armor)]
                 

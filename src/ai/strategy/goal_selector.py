@@ -19,12 +19,13 @@ class GoalSelector:
         visible_enemies = state.visible_enemies
         current_region = state.current_region
         
-        enemies_same_region = sum(1 for e in visible_enemies if e.region_id == current_region.id)
+        # [REVISI]: Hanya hitung musuh hidup di region yang sama
+        enemies_same_region = sum(1 for e in visible_enemies if e.region_id == current_region.id and e.is_alive)
         hp_ratio = player.hp / player.max_hp
 
         is_enemy_weak = False
         if enemies_same_region == 1:
-            primary_enemy = next((e for e in visible_enemies if e.region_id == current_region.id), None)
+            primary_enemy = next((e for e in visible_enemies if e.region_id == current_region.id and e.is_alive), None)
             if primary_enemy:
                 from src.ai.combat.win_probability import WinProbabilityCalculator
                 win_prob = WinProbabilityCalculator.calculate(player, primary_enemy)
@@ -75,7 +76,8 @@ class GoalSelector:
                     is_unarmed_finisher = (
                         target_enemy is not None and 
                         target_enemy.hp <= 5 and 
-                        target_enemy.region_id == state.current_region.id
+                        target_enemy.region_id == state.current_region.id and
+                        target_enemy.is_alive
                     )
                     
                     if is_unarmed_finisher:
