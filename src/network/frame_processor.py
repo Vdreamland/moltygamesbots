@@ -20,7 +20,8 @@ class FrameProcessor:
         self.client = client
         self.brain = client.brain
         self._last_turn_dead = None
-        self._last_state = None # Menyimpan snapshot state terakhir untuk re-thinking
+        self._last_state = None 
+        self._last_action_turn = -1 # Merekam turn terakhir di mana aksi sukses dikirim
 
     async def process_message(self, message: str):
         try:
@@ -97,6 +98,8 @@ class FrameProcessor:
                 logger.error(f"[GUI ERROR] Terjadi kerusakan pada src/network/gui_logger.py:\n{traceback.format_exc()}")
 
             if action:
+                # Catat turn aktif saat ini agar tidak terjadi double-action di turn yang sama
+                self._last_action_turn = state.turn
                 await self.client.send_action(action)
             return
 
@@ -137,11 +140,10 @@ class FrameProcessor:
                 self.brain.local_cooldown_end = time.time()
                 logger.info("[WS] Cooldown selesai. Agen SIAP BERTINDAK!")
                 
-                # [REVISI SINKRONISASI COOLDOWN EXPIRED]: Jika cooldown baru selesai dan ada state turn aktif,
-                # paksa Brain berpikir ulang sekarang agar agen langsung bertindak tanpa diam 30 detik!
+                # [PERBAIKAN SINKRONISASI]: Hanya re-think jika turn ini BELUM PERNAH diambil keputusan aksi taktis
                 if self._last_state is not None:
                     state = self._last_state
-                    if state.is_player_alive:
+                    if state.is_player_alive and state.turn != getattr(self, "_last_action_turn", -1):
                         action = self.brain.think(state)
                         try:
                             # Cetak pembaruan log visual dengan keputusan terbaru
@@ -149,6 +151,7 @@ class FrameProcessor:
                         except Exception:
                             pass
                         if action:
+                            self._last_action_turn = state.turn
                             await self.client.send_action(action)
             return
             
