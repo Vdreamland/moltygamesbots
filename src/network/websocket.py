@@ -39,6 +39,7 @@ class ClawRoyaleWSClient:
         self.reconnect_attempts = 0
         self._dead_flag_logged = False
         self._finished_flag_logged = False
+        self._force_long_cooldown = False # Flag khusus untuk menangani Error 4003 IP Limit
 
     async def connect_and_loop(self):
         self.is_running = True
@@ -65,6 +66,7 @@ class ClawRoyaleWSClient:
 
         while self.is_running:
             try:
+                self._force_long_cooldown = False
                 logger.info(f"[WS] Menghubungkan ke: {uri}")
                 async with websockets.connect(
                     uri, 
@@ -83,8 +85,13 @@ class ClawRoyaleWSClient:
                         async for message in websocket:
                             await self._handle_incoming_frame(message)
                     except websockets.exceptions.ConnectionClosed as e:
-                        # Menambahkan logger code & reason agar mudah melacak alasan proxy memutus soket
-                        logger.warning(f"[WS] Soket terputus secara mendadak dari sisi server. (Code: {e.code}, Reason: {e.reason})")
+                        logger.warning(f"[WS] Soket terputus dari sisi server. (Code: {e.code}, Reason: {e.reason})")
+                        
+                        # PENANGANAN RATE LIMIT (Code 4003)
+                        if e.code == 4003 or "ip agent limit" in str(e.reason).lower():
+                            logger.error("[WS RATE LIMIT] Terdeteksi pembatasan IP/Agent dari server (Phantom Socket).")
+                            self._force_long_cooldown = True
+                            
                     finally:
                         ping_task.cancel()
                         
@@ -99,13 +106,16 @@ class ClawRoyaleWSClient:
                 logger.error("[WS] Batas maksimal reconnect terlampaui. Menghentikan proses.")
                 break
                 
-            # DYNAMIC BACKOFF: Perpanjang waktu delay jika terjadi diskoneksi terus-menerus 
-            # untuk memberi waktu pada cache proxy server membersihkan Match lama yang sudah usai.
-            delay = RECONNECT_DELAY_SECONDS
-            if self.reconnect_attempts > 2:
-                delay = min(30, int(RECONNECT_DELAY_SECONDS * self.reconnect_attempts))
+            # PENJADWALAN DELAY (BACKOFF)
+            if self._force_long_cooldown:
+                delay = 60  # Wajib tunggu 60 detik agar server mematikan sesi lama
+                logger.info(f"[WS RATE LIMIT] Menunda koneksi selama {delay} detik untuk menghindari pemblokiran permanen...")
+            else:
+                delay = RECONNECT_DELAY_SECONDS
+                if self.reconnect_attempts > 2:
+                    delay = min(30, int(RECONNECT_DELAY_SECONDS * self.reconnect_attempts))
+                logger.info(f"[WS] Mencoba menyambungkan kembali dalam {delay} detik...")
                 
-            logger.info(f"[WS] Mencoba menyambungkan kembali dalam {delay} detik...")
             await asyncio.sleep(delay)
 
     async def _handle_incoming_frame(self, message: str):
@@ -172,11 +182,14 @@ class ClawRoyaleWSClient:
 
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
-        # Mencegat pesan Error & Game Ended khusus dari server
         if frame_type == "error":
             code = payload.get("code", "UNKNOWN")
             msg = payload.get("message", "Terjadi kesalahan")
             logger.error(f"[WS ERROR] Dari server: {code} - {msg}")
+            
+            # Jika server mengembalikan error Rate Limit dalam bentuk payload
+            if "limit exceeded" in msg.lower() or code == 4003:
+                self._force_long_cooldown = True
             return
             
         elif frame_type == "game_ended":
@@ -268,7 +281,6 @@ class ClawRoyaleWSClient:
             await asyncio.sleep(PING_INTERVAL_SECONDS)
             if self.websocket and not is_ws_closed(self.websocket):
                 try:
-                    # Menerapkan JSON ping payload resmi agar server proxy tidak salah mendeteksi inactivity
                     await self.websocket.send(json.dumps({"type": "ping"}))
                 except Exception:
                     break
