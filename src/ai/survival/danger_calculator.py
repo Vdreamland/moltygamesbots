@@ -6,6 +6,7 @@ Tanggung jawab: Menghitung Indeks Bahaya (Danger Score) terstandarisasi (0.0 - 1
 """
 
 import logging
+from typing import Any
 from src.models.game_state import GameState
 from src.config.constants import (
     WEIGHT_DANGER_HP, WEIGHT_DANGER_ENEMY, 
@@ -66,8 +67,6 @@ class DangerCalculator:
             enemy_risk = enemy_ratio * 100.0 * WEIGHT_DANGER_ENEMY
 
         # [REVISI ADAPTASI CUACA]: Baca status Vision FoV dari server payload
-        # Jika cuaca buruk atau malam hari (Vision <= 0), tingkatkan risiko bahaya dasar sebesar +15.0
-        # karena risiko terkena jebakan ambush musuh sangat tinggi akibat sempitnya jarak pandang.
         vision_fov = state.data_payload.get("vision", 1)
         weather_risk = 0.0
         if safe_int(vision_fov, 1) <= 0:
