@@ -37,7 +37,8 @@ class ClawRoyaleWSClient:
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.is_running = False
         self.reconnect_attempts = 0
-        self._dead_flag_logged = False  # Mencegah spam log saat agen mati
+        self._dead_flag_logged = False
+        self._finished_flag_logged = False
 
     async def connect_and_loop(self):
         self.is_running = True
@@ -72,7 +73,8 @@ class ClawRoyaleWSClient:
                 ) as websocket:
                     self.websocket = websocket
                     self.reconnect_attempts = 0
-                    self._dead_flag_logged = False # Reset flag mati setiap koneksi baru
+                    self._dead_flag_logged = False
+                    self._finished_flag_logged = False
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
                     ping_task = asyncio.create_task(self._send_ping_loop())
@@ -80,8 +82,9 @@ class ClawRoyaleWSClient:
                     try:
                         async for message in websocket:
                             await self._handle_incoming_frame(message)
-                    except websockets.exceptions.ConnectionClosed:
-                        logger.warning("[WS] Soket terputus secara mendadak dari sisi server.")
+                    except websockets.exceptions.ConnectionClosed as e:
+                        # Menambahkan logger code & reason agar mudah melacak alasan proxy memutus soket
+                        logger.warning(f"[WS] Soket terputus secara mendadak dari sisi server. (Code: {e.code}, Reason: {e.reason})")
                     finally:
                         ping_task.cancel()
                         
@@ -96,8 +99,14 @@ class ClawRoyaleWSClient:
                 logger.error("[WS] Batas maksimal reconnect terlampaui. Menghentikan proses.")
                 break
                 
-            logger.info(f"[WS] Mencoba menyambungkan kembali dalam {RECONNECT_DELAY_SECONDS} detik...")
-            await asyncio.sleep(RECONNECT_DELAY_SECONDS)
+            # DYNAMIC BACKOFF: Perpanjang waktu delay jika terjadi diskoneksi terus-menerus 
+            # untuk memberi waktu pada cache proxy server membersihkan Match lama yang sudah usai.
+            delay = RECONNECT_DELAY_SECONDS
+            if self.reconnect_attempts > 2:
+                delay = min(30, int(RECONNECT_DELAY_SECONDS * self.reconnect_attempts))
+                
+            logger.info(f"[WS] Mencoba menyambungkan kembali dalam {delay} detik...")
+            await asyncio.sleep(delay)
 
     async def _handle_incoming_frame(self, message: str):
         try:
@@ -118,11 +127,24 @@ class ClawRoyaleWSClient:
         if is_game_state:
             state = GameState(payload)
             
-            # --- PENANGANAN AGEN GUGUR (MATCH LOCK SYSTEM) ---
+            # --- PENANGANAN GAME SELESAI / GUGUR ---
+            game_status = payload.get("status", "running")
+            
+            if game_status == "finished":
+                if not self._finished_flag_logged:
+                    logger.info("\n=== PERTANDINGAN SELESAI (STATUS: FINISHED) ===")
+                    logger.info("[WS] Meninggalkan ruangan. Bersiap mencari antrean game baru...")
+                    self._finished_flag_logged = True
+                    
+                self.brain.planner.clear(reason="Game Finished")
+                
+                if self.websocket and not is_ws_closed(self.websocket):
+                    asyncio.create_task(self.websocket.close())
+                return
+            
             if not state.is_player_alive:
                 self.brain.planner.clear(reason="Agent Gugur (HP 0)")
                 
-                # Hanya cetak log GUI GUI satu kali (atau saat frame berubah) agar tidak spam
                 if not getattr(self, '_last_turn_dead', None) == state.turn:
                     try:
                         GUILogger.log_turn(state, None, getattr(self, 'can_act', True))
@@ -130,13 +152,10 @@ class ClawRoyaleWSClient:
                         logger.error(f"[GUI ERROR] Terjadi kerusakan pada gui_logger:\n{traceback.format_exc()}")
                     self._last_turn_dead = state.turn
                 
-                # Beri notifikasi Standby hanya satu kali
                 if not self._dead_flag_logged:
                     logger.info("[WS] Agen GUGUR. Standby di dalam room menunggu server menyelesaikan Match ini...")
                     self._dead_flag_logged = True
                 
-                # KUNCI: Jangan putuskan koneksi (`websocket.close()`). 
-                # Biarkan terbuka tanpa mengirim aksi hingga server mengakhiri game secara alami.
                 return
             # ----------------------------------------------
             
@@ -153,7 +172,25 @@ class ClawRoyaleWSClient:
 
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
-        if frame_type in ["chat", "whisper", "talk", "broadcast"]:
+        # Mencegat pesan Error & Game Ended khusus dari server
+        if frame_type == "error":
+            code = payload.get("code", "UNKNOWN")
+            msg = payload.get("message", "Terjadi kesalahan")
+            logger.error(f"[WS ERROR] Dari server: {code} - {msg}")
+            return
+            
+        elif frame_type == "game_ended":
+            logger.info("\n=== PERTANDINGAN SELESAI (GAME_ENDED FRAME) ===")
+            self.brain.planner.clear(reason="Game Ended")
+            if self.websocket and not is_ws_closed(self.websocket):
+                asyncio.create_task(self.websocket.close())
+            return
+            
+        elif frame_type == "game_settled":
+            logger.info("[WS] Settlement data diterima. Pertandingan sepenuhnya ditutup oleh server.")
+            return
+
+        elif frame_type in ["chat", "whisper", "talk", "broadcast"]:
             sender = payload.get("sender", "Unknown")
             content = payload.get("message", "")
             logger.info(f"\n[WS RECEIVE {frame_type.upper()}] Dari: {sender} | Pesan: '{content}'\n")
@@ -169,17 +206,20 @@ class ClawRoyaleWSClient:
             else:
                 welcome_msg = payload.get("message", "")
 
+            decision = payload.get("decision", "")
             logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
             welcome_lower = welcome_msg.lower()
-            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
+            decision_lower = decision.lower()
+            
+            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower or decision_lower == "ask_entry_type":
                 join_payload = {
                     "type": "hello",
                     "entryType": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
+            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME" or decision_lower == "already_in_game":
                 logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
             return
 
@@ -228,7 +268,8 @@ class ClawRoyaleWSClient:
             await asyncio.sleep(PING_INTERVAL_SECONDS)
             if self.websocket and not is_ws_closed(self.websocket):
                 try:
-                    await self.websocket.ping()
+                    # Menerapkan JSON ping payload resmi agar server proxy tidak salah mendeteksi inactivity
+                    await self.websocket.send(json.dumps({"type": "ping"}))
                 except Exception:
                     break
 
