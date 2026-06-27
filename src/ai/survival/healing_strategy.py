@@ -1,7 +1,7 @@
 """
 src/ai/survival/healing_strategy.py
 Tanggung jawab: Merancang rute penyelamatan taktis khusus untuk melakukan pemulihan (Heal Move).
- Mengarahkan agen bergerak ke region sepi jika terluka tetapi ada musuh di dekatnya.
+               Mengarahkan agen bergerak ke region sepi jika terluka tetapi ada musuh di dekatnya.
 """
 
 import logging
@@ -24,13 +24,12 @@ class HealingStrategy:
         player = state.player
         visible_enemies = state.visible_enemies
 
-        # [REVISI JANGKAUAN]: Hanya deteksi ancaman instan jika ada musuh hidup di region murni yang sama (Layer 0)
+        # [PERBAIKAN JANGKAUAN]: Hanya deteksi ancaman instan jika ada musuh hidup di region murni yang sama (is_alive)
         enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id and e.is_alive]
 
         hp_ratio = player.hp / player.max_hp
         
         # [AUDIT PREDATOR]: Hanya mengungsi untuk healing jika HP benar-benar kritis (<= 40%).
-        # Mencegah bot menjadi pengecut (coward) melarikan diri saat HP masih 50%-75% padahal bisa menang duel.
         if hp_ratio > 0.40 or len(enemies_in_same_region) == 0:
             return None
 
@@ -48,8 +47,10 @@ class HealingStrategy:
         for r_id in connections:
             score = PathScoring.score_region(r_id, state, memory)
             
-            if r_id in state.pending_deathzones:
-                score -= 100.0
+            # [PERBAIKAN SINKRONISASI BADAI]: Berikan penalti mutlak murni jika region terdeteksi pending atau aktif badai
+            is_badai = r_id in state.pending_deathzones or memory.is_known_death_zone(r_id)
+            if is_badai:
+                score -= 2000.0
 
             if score > best_score:
                 best_score = score

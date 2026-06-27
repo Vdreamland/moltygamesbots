@@ -1,8 +1,8 @@
 """
 src/ai/inventory/consumable_strategy.py
 Tanggung jawab: Mengevaluasi kapan harus meminum ramuan pemulih (Potion HP / Potion EP).
- Menegakkan Heal Rule: "Jangan heal di depan musuh".
- Aksi use_item memakan 0 EP tetapi memicu 30s Cooldown.
+               Menegakkan Heal Rule: "Jangan heal di depan musuh".
+               Aksi use_item memakan 0 EP tetapi memicu 30s Cooldown.
 """
 
 import logging
@@ -20,21 +20,27 @@ class ConsumableStrategy:
         inventory = player.inventory
         visible_enemies = state.visible_enemies
 
-        # [REVISI]: Hanya memblokir heal jika ada musuh aktif di region yang sama
-        enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id]
+        # [PERBAIKAN]: Hanya memblokir heal jika ada musuh AKTIF / HIDUP di region murni yang sama (is_alive)
+        enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id and e.is_alive]
         if len(enemies_in_same_region) > 0:
-            logger.debug("[CONSUMABLE] Ditunda: Ada musuh di ruangan yang sama. Menunda penyembuhan.")
+            logger.debug("[CONSUMABLE] Ditunda: Ada musuh aktif di ruangan yang sama. Menunda penyembuhan.")
             return None
 
-        hp_potion: Optional[Potion] = None
-        ep_potion: Optional[Potion] = None
+        hp_potion = None
+        ep_potion = None
 
+        # [PERBAIKAN - FAIL SAFE]: Deteksi hibrida tipe item secara aman tanpa bergantung murni pada isinstance Potion
         for item in inventory:
-            if isinstance(item, Potion):
-                if item.recovery_type == "hp":
-                    hp_potion = item
-                elif item.recovery_type == "ep":
-                    ep_potion = item
+            iname = item.name.lower()
+            itype = item.type.lower()
+            
+            is_hp = "recovery_hp" in itype or any(k in iname for k in ["food", "ration", "bandage", "medkit", "medical", "potion_hp"])
+            is_ep = "recovery_ep" in itype or any(k in iname for k in ["snack", "energy", "candy", "soda", "potion_ep", "drink"])
+            
+            if is_hp:
+                hp_potion = item
+            elif is_ep:
+                ep_potion = item
 
         # 1. Prioritas Utama: Pemulihan HP jika HP <= 75%
         hp_ratio = player.hp / player.max_hp
