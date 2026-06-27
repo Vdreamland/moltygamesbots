@@ -24,7 +24,6 @@ class LootStrategy:
             logger.warning("[LOOT] Tas penuh! Mematikan evaluasi looting.")
             return None
 
-        # [REVISI]: Tambahkan pengecekan status e.is_alive agar mayat tidak memblokir looting
         enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == current_region.id and e.is_alive]
         if len(enemies_in_same_region) >= 1:
             logger.warning("[LOOT] Ada musuh aktif di satu region. Menunda looting untuk keamanan.")
@@ -80,6 +79,10 @@ class LootStrategy:
             elif isinstance(item, Potion):
                 score = 50.0 + (item.tier * 10.0)
                 
+            elif "smoltz" in item.name.lower():
+                # [REVISI AUDIT]: sMoltz adalah koin mata uang progres berharga tinggi. Beri prioritas 60.0
+                score = 60.0
+
             else:
                 score = 5.0
 

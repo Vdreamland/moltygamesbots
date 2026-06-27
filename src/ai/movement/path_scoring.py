@@ -21,8 +21,6 @@ class PathScoring:
         score = 0.0
         current_turn = state.turn
 
-        # [REVISI JANGKAUAN BADAI]: Tingkatkan penalti ke -2000.0 agar eksplorasi normal 
-        # mutlak tidak pernah memilih melangkah ke wilayah badai aktif maupun badai mendatang (pending)
         if region_id in state.pending_deathzones:
             score -= 2000.0
 
@@ -59,14 +57,22 @@ class PathScoring:
         current_mode = GoalSelector.get_current_mode(state)
         
         ruin_bonus = 0.0
+        loot_weapon_bonus = 0.0
+        
         if current_mode == "LOOT":
             is_target_ruin = any(ruin.ruin_id == region_id and not ruin.is_empty for ruin in state.visible_ruins)
             if is_target_ruin:
                 ruin_bonus = 150.0
                 logger.info(f"[PATH SCORING] Region {region_id} diberi bonus Reruntuhan (+150) karena dalam LOOT MODE.")
+            
+            # [REVISI]: Jika tidak membawa senjata, prioritaskan wilayah sebelah yang memiliki senjata di tanah (meskipun ada musuh/monster)
+            has_weapon_in_target = any(item.type == "weapon" for item in target_items)
+            if has_weapon_in_target:
+                loot_weapon_bonus = 350.0
+                logger.info(f"[PATH SCORING] Menemukan SENJATA di region tetangga {region_id} saat UNARMED. Memberikan bonus prioritas +350.")
 
         explore_score = ExplorationStrategy.calculate_exploration_score(region_id, memory, current_turn)
-        score += explore_score + ruin_bonus
+        score += explore_score + ruin_bonus + loot_weapon_bonus
 
         is_water_or_storm = region_id in state.pending_deathzones or region_id.lower().startswith("water")
         if is_water_or_storm:
