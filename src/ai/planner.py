@@ -17,26 +17,28 @@ class Planner:
         self.action_queue: Deque[Action] = deque()
 
     def add_actions(self, actions: List[Action]):
-        """Menambahkan rangkaian aksi ke dalam queue."""
         for action in actions:
             self.action_queue.append(action)
         logger.info(f"[PLANNER] Menambahkan {len(actions)} aksi ke queue. Total: {len(self.action_queue)}")
 
     def get_next_action(self, state: GameState) -> Optional[Action]:
-        """
-        Mengambil aksi berikutnya dari queue dengan validasi can_act.
-        Jika bot tidak bisa bertindak, planner menahan queue.
-        """
         if not self.action_queue:
             return None
 
-        # [REVISI]: Ambil status can_act aman dari data_payload murni untuk mencegah AttributeError
-        can_act = state.data_payload.get("canAct", True)
+        # [REVISI JANGKAUAN]: Deteksi canAct secara mendalam dari nested JSON untuk keamanan
+        data_payload = getattr(state, "data_payload", {})
+        can_act = data_payload.get("canAct")
+        if can_act is None:
+            can_act = data_payload.get("view", {}).get("canAct")
+        if can_act is None:
+            can_act = data_payload.get("data", {}).get("canAct")
+        if can_act is None:
+            can_act = True
 
         if not can_act:
             next_action = self.action_queue[0]
             if not getattr(next_action, "is_free_action", False):
-                logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis.")
+                logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis di antrean.")
                 return None
 
         action = self.action_queue.popleft()
@@ -44,9 +46,6 @@ class Planner:
         return action
 
     def clear(self, reason: str = ""):
-        """
-        Membatalkan seluruh rencana aksi (dipanggil saat Emergency Mode).
-        """
         if reason:
             logger.warning(f"[PLANNER] Queue dibersihkan secara paksa oleh Brain. Alasan: {reason}")
         else:
@@ -54,7 +53,6 @@ class Planner:
         self.action_queue.clear()
 
     def has_actions(self) -> bool:
-        """Memeriksa apakah ada aksi tersisa di antrian."""
         return len(self.action_queue) > 0
 
     def has_pending_actions(self) -> bool:

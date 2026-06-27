@@ -28,16 +28,19 @@ class Evaluator:
     def evaluate_all_options(self, state: GameState, memory: WorldModel) -> List[Tuple[Action, float]]:
         options: List[Tuple[Action, float]] = []
         
-        # [REVISI]: Mengambil 'canAct' dari data mentah karena tidak ada di atribut GameState
-        # Mengambil dari data_payload yang sudah dibersihkan di GameState.__init__
-        can_act = state.data_payload.get("canAct", True)
+        # [REVISI JANGKAUAN]: Deteksi canAct secara mendalam dari nested JSON
+        data_payload = getattr(state, "data_payload", {})
+        can_act = data_payload.get("canAct")
+        if can_act is None:
+            can_act = data_payload.get("view", {}).get("canAct")
+        if can_act is None:
+            can_act = data_payload.get("data", {}).get("canAct")
+        if can_act is None:
+            can_act = True
 
-        # 1. Evaluasi Aksi Bertahan Hidup (Heal, Run) - Selalu evaluasi
         if self.survival_evaluator:
             options.extend(self.survival_evaluator.evaluate(state, memory))
 
-        # 2. Evaluasi Aksi Strategis (Attack, Move, Loot)
-        # Hanya dievaluasi jika bot dalam status can_act = True
         if can_act:
             if self.combat_evaluator:
                 options.extend(self.combat_evaluator.evaluate(state, memory))
@@ -48,12 +51,10 @@ class Evaluator:
             if self.inventory_evaluator:
                 options.extend(self.inventory_evaluator.evaluate(state, memory))
         else:
-            logger.debug("[EVALUATOR] Bot dalam cooldown, hanya memproses survival actions.")
+            logger.debug("[EVALUATOR] Bot dalam cooldown, menahan aksi taktis berat.")
 
-        # 3. Default Fallback Action
         if not options:
             options.append((RestAction(thought="Tidak ada aksi tersedia, beristirahat."), 0.1))
 
         options.sort(key=lambda x: x[1], reverse=True)
-        
         return options

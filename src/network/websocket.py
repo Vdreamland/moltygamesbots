@@ -100,8 +100,9 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        frame_type = payload.get("type", "").lower()
+        frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
+        # [REVISI ALUR]: Tangani Tipe Frame Non-Gameplay terlebih dahulu
         if frame_type in ["chat", "whisper", "talk", "broadcast"]:
             sender = payload.get("sender", "Unknown")
             content = payload.get("message", "")
@@ -132,6 +133,7 @@ class ClawRoyaleWSClient:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
 
+        # [REVISI ALUR]: Setelah frame lain difilter, barulah parsing sebagai Game State murni
         is_game_state = False
         if frame_type in ["agent_view", "turn_advanced"]:
             is_game_state = True
@@ -139,6 +141,8 @@ class ClawRoyaleWSClient:
             if "self" in payload:
                 is_game_state = True
             elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
                 is_game_state = True
 
         if is_game_state:
