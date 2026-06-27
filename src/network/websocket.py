@@ -102,7 +102,6 @@ class ClawRoyaleWSClient:
 
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
-        # [REVISI ALUR]: Tangani Tipe Frame Non-Gameplay terlebih dahulu
         if frame_type in ["chat", "whisper", "talk", "broadcast"]:
             sender = payload.get("sender", "Unknown")
             content = payload.get("message", "")
@@ -129,11 +128,12 @@ class ClawRoyaleWSClient:
             reason = payload.get("data", {}).get("reason", "None")
             if not success:
                 logger.error(f"[WS SERVER_ACK] GAGAL: {reason}")
+                # [REVISI ANTI-SPAM]: Bersihkan paksa rencana planner jika server menolak aksi
+                self.brain.planner.clear(reason=f"Server Reject ({reason})")
             else:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
 
-        # [REVISI ALUR]: Setelah frame lain difilter, barulah parsing sebagai Game State murni
         is_game_state = False
         if frame_type in ["agent_view", "turn_advanced"]:
             is_game_state = True
@@ -141,8 +141,6 @@ class ClawRoyaleWSClient:
             if "self" in payload:
                 is_game_state = True
             elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
                 is_game_state = True
 
         if is_game_state:

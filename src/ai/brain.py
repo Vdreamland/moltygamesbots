@@ -49,7 +49,6 @@ class Brain:
         self.memory.clean_expired_memories(state.turn)
 
         current_mode = GoalSelector.get_current_mode(state)
-
         is_in_storm = state.current_region.is_death_zone
         
         if current_mode == "RETREAT" or is_in_storm:
@@ -62,25 +61,27 @@ class Brain:
                 logger.info("[BRAIN] Kondisi membaik. Emergency Mode dinonaktifkan.")
                 self.emergency_mode_active = False
 
-        # [REVISI]: Filter musuh yang masih hidup saja
         enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
+        
+        # [REVISI ANTI-SPAM]: Menghentikan eksekusi fall-through. Jika planner punya aksi tapi sedang menahan (cooldown), kembalikan None!
         if self.planner.has_actions() and not self.emergency_mode_active:
             if enemies_in_same_region:
                 logger.warning("[BRAIN] Musuh terdeteksi di area yang sama selama eksekusi rencana berantai. Membersihkan Planner!")
                 self.planner.clear(reason="Enemy entered current region")
             else:
-                next_action = self.planner.get_next_action(state)
-                if next_action:
-                    return next_action
+                return self.planner.get_next_action(state)
 
-        candidates = self.evaluator.evaluate_all_options(state, self.memory)
-        
-        candidates = GoalSelector.select_goal_and_adjust(candidates, state)
-        
-        final_action = self.selector.validate_and_select(candidates, state)
-        
-        if final_action.action_type == "move" and self.emergency_mode_active:
-            self.memory.record_retreat_movement(state.current_region.id, state.turn)
+        # Hanya lakukan evaluasi jika planner benar-benar kosong
+        if not self.planner.has_actions():
+            candidates = self.evaluator.evaluate_all_options(state, self.memory)
+            candidates = GoalSelector.select_goal_and_adjust(candidates, state)
+            final_action = self.selector.validate_and_select(candidates, state)
+            
+            if final_action:
+                if final_action.action_type == "move" and self.emergency_mode_active:
+                    self.memory.record_retreat_movement(state.current_region.id, state.turn)
+                self.planner.add_actions([final_action])
+                
+            return self.planner.get_next_action(state)
 
-        logger.info(f"=== [BRAIN] AKSI PILIHAN AKHIR: {final_action.action_type} ===")
-        return final_action
+        return None
