@@ -5,7 +5,7 @@ dan meranking opsi aksi berdasarkan skor utilitas terbesar.
 """
 
 import logging
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 from src.models.game_state import GameState
 from src.ai.memory.world_model import WorldModel
 from src.models.action import Action, RestAction
@@ -28,10 +28,11 @@ class Evaluator:
     def evaluate_all_options(self, state: GameState, memory: WorldModel) -> List[Tuple[Action, float]]:
         options: List[Tuple[Action, float]] = []
         
-        # [REVISI]: Menggunakan atribut yang benar yaitu 'can_act' sesuai model GameState
-        can_act = state.can_act
+        # [REVISI]: Mengambil 'canAct' dari data mentah karena tidak ada di atribut GameState
+        # Mengambil dari data_payload yang sudah dibersihkan di GameState.__init__
+        can_act = state.data_payload.get("canAct", True)
 
-        # 1. Evaluasi Aksi Bertahan Hidup (Heal, Run)
+        # 1. Evaluasi Aksi Bertahan Hidup (Heal, Run) - Selalu evaluasi
         if self.survival_evaluator:
             options.extend(self.survival_evaluator.evaluate(state, memory))
 
