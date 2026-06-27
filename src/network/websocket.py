@@ -117,9 +117,9 @@ class ClawRoyaleWSClient:
             state = GameState(payload)
             action = self.brain.think(state)
             
-            # [REVISI DEBUG GUI]: Ubah dari debug tersembunyi menjadi ERROR yang meledak dengan Traceback penuh
+            # [REVISI DEBUG GUI]: Menggunakan getattr untuk memastikan can_act diteruskan dengan aman
             try:
-                GUILogger.log_turn(state, action)
+                GUILogger.log_turn(state, action, getattr(self, 'can_act', True))
             except Exception as e:
                 logger.error(f"[GUI ERROR] Terjadi kerusakan pada src/network/gui_logger.py:\n{traceback.format_exc()}")
 

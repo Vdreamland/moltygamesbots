@@ -11,7 +11,7 @@ from src.models.action import Action
 
 class GUILogger:
     @staticmethod
-    def log_turn(state: GameState, action: Optional[Action], can_act: bool):
+    def log_turn(state: GameState, action: Optional[Action], can_act: bool = True):
         player = state.player
         region = state.current_region
         
