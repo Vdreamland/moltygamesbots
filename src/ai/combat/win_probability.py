@@ -1,5 +1,17 @@
-@staticmethod
-    def calculate(player: Agent, enemy: Agent) -> float:
+"""
+src/ai/combat/win_probability.py
+Tanggung jawab: Menghitung persentase peluang menang (Win Probability) melawan musuh spesifik.
+"""
+
+from typing import TYPE_CHECKING
+
+# Menggunakan TYPE_CHECKING untuk menghindari circular import pada model Entities
+if TYPE_CHECKING:
+    from src.models.entities import Agent
+
+class WinProbabilityCalculator:
+    @staticmethod
+    def calculate(player: 'Agent', enemy: 'Agent') -> float:
         """
         Menghitung persentase peluang menang (0.0 - 1.0) melawan musuh spesifik.
         Formula memperhitungkan pengurangan damage berdasarkan DEF (Armor) absolut,

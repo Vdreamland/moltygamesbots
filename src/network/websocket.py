@@ -13,7 +13,7 @@ import websockets
 from typing import Optional, Any
 from src.models.game_state import GameState
 from src.ai.brain import Brain
-from src.network.gui_logger import GUILogger  # [REVISI GUI]: Import GUI Logger murni
+from src.network.gui_logger import GUILogger  # [REVISI GUI]: Import GUI Logger dikembalikan
 from src.config.constants import (
     WS_BASE_URL, API_KEY, PING_INTERVAL_SECONDS, 
     WS_TIMEOUT_SECONDS, MAX_CONNECTION_RETRIES, RECONNECT_DELAY_SECONDS
@@ -112,26 +112,46 @@ class ClawRoyaleWSClient:
             return
 
         elif frame_type == "welcome":
-            decision = payload.get("decision", "")
-            logger.info(f"[WS JOIN] Welcome Frame Decision: {decision}")
+            welcome_msg = ""
+            data_val = payload.get("data")
+            if isinstance(data_val, str):
+                welcome_msg = data_val
+            elif isinstance(data_val, dict):
+                welcome_msg = data_val.get("entryType", "")
+            else:
+                welcome_msg = payload.get("message", "")
+
+            logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            if decision == "ASK_ENTRY_TYPE":
+            welcome_lower = welcome_msg.lower()
+            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
                 join_payload = {
                     "type": "hello",
                     "entryType": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif decision == "ALREADY_IN_GAME":
+            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
                 logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
             return
 
         elif frame_type == "action_result":
-            data_block = payload.get("data", {})
-            success = data_block.get("success", False)
-            reason = data_block.get("reason", "None")
-            cd_rem = data_block.get("cooldownRemainingMs")
-            
+            # [REVISI ACK PARSER]: Baca format Flat JSON (root) terlebih dahulu, lalu Fallback ke Nested (data)
+            if "success" in payload:
+                success = payload.get("success", False)
+                reason = payload.get("reason", "None")
+                cd_rem = payload.get("cooldownRemainingMs")
+            else:
+                data_block = payload.get("data", {})
+                if isinstance(data_block, dict):
+                    success = data_block.get("success", False)
+                    reason = data_block.get("reason", "None")
+                    cd_rem = data_block.get("cooldownRemainingMs")
+                else:
+                    success = False
+                    reason = "Unknown format"
+                    cd_rem = None
+
             if cd_rem is not None:
                 self.brain.local_cooldown_end = time.time() + (cd_rem / 1000.0)
                 
