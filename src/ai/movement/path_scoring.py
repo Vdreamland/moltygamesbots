@@ -21,10 +21,12 @@ class PathScoring:
         score = 0.0
         current_turn = state.turn
 
+        # [REVISI JANGKAUAN BADAI]: Tingkatkan penalti ke -2000.0 agar eksplorasi normal 
+        # mutlak tidak pernah memilih melangkah ke wilayah badai aktif maupun badai mendatang (pending)
         if region_id in state.pending_deathzones:
-            score -= 150.0
+            score -= 2000.0
 
-        active_enemies_in_target = sum(1 for e in state.visible_enemies if e.region_id == region_id)
+        active_enemies_in_target = sum(1 for e in state.visible_enemies if e.region_id == region_id and e.is_alive)
         if active_enemies_in_target > 0:
             score -= (active_enemies_in_target * 150.0)
 
@@ -34,7 +36,6 @@ class PathScoring:
         if memory.is_loop_forbidden(region_id, current_turn):
             score -= 500.0
 
-        # [REVISI]: Ambil item tanah dari map saat ini, atau ambil dari memori jika memeriksa map sebelah
         target_items = []
         if region_id == state.current_region.id:
             target_items = state.current_region.items
@@ -43,7 +44,6 @@ class PathScoring:
 
         item_ids_in_bag = {item.id for item in state.player.inventory}
 
-        # Beri nilai taktis jalur berdasarkan potensi barang yang diingat/terlihat di tanah
         for item in target_items:
             if item.id in item_ids_in_bag:
                 continue
