@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 
 def safe_int(value: Any, default: int = 0) -> int:
-    """[REVISI AUDIT]: Fail-safe type checking untuk parsing data integer."""
+    """Fail-safe type checking untuk parsing data integer."""
     try:
         if value is None:
             return default
@@ -121,7 +121,9 @@ class Potion(Item):
         stats = source_name.get("stats", {}) or {}
         iname = str(source_name.get("name", "")).lower()
         
-        is_ep = any(keyword in iname for keyword in ["food", "smoltz", "snack", "energy", "candy", "soda", "potion_ep"])
+        # [REVISI]: Keluarkan "smoltz" dari recovery ramuan, sMoltz adalah koin.
+        # Pindahkan "food" ke kategori "hp" agar Emergency Food memicu penyembuhan HP.
+        is_ep = any(keyword in iname for keyword in ["snack", "energy", "candy", "soda", "potion_ep"])
         rec_type = "ep" if is_ep else "hp"
         
         default_amount = 30 if "bandage" in iname else (50 if "medkit" in iname else 30)
@@ -196,10 +198,11 @@ class Region:
             
             iname = str(source_name.get("name", "")).lower()
             
+            # [REVISI]: Keluarkan "smoltz" dari ep_recovery, tambahkan "food" ke hp_recovery
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
-            is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp"])
-            is_ep_recovery = any(keyword in iname for keyword in ["food", "smoltz", "snack", "energy", "candy", "soda", "potion_ep"])
+            is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
+            is_ep_recovery = any(keyword in iname for keyword in ["snack", "energy", "candy", "soda", "potion_ep"])
 
             if itype == "weapon" or is_weapon_by_name:
                 parsed_items.append(Weapon.from_dict(item_data))
@@ -274,10 +277,11 @@ class Agent:
             
             iname = str(source_name.get("name", "")).lower()
             
+            # [REVISI]: Keluarkan "smoltz" dari ep_recovery, tambahkan "food" ke hp_recovery
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
-            is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp"])
-            is_ep_recovery = any(keyword in iname for keyword in ["food", "smoltz", "snack", "energy", "candy", "soda", "potion_ep"])
+            is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
+            is_ep_recovery = any(keyword in iname for keyword in ["snack", "energy", "candy", "soda", "potion_ep"])
 
             if itype == "weapon" or is_weapon_by_name:
                 parsed_inventory.append(Weapon.from_dict(item_data))
