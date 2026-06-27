@@ -20,6 +20,7 @@ class FrameProcessor:
         self.client = client
         self.brain = client.brain
         self._last_turn_dead = None
+        self._last_state = None # Menyimpan snapshot state terakhir untuk re-thinking
 
     async def process_message(self, message: str):
         try:
@@ -54,6 +55,7 @@ class FrameProcessor:
 
         if is_game_state:
             state = GameState(payload)
+            self._last_state = state # Simpan snapshot state aktif ke memori sasis
             game_status = payload.get("status", "running")
             
             # --- PENANGANAN GAME SELESAI / GUGUR ---
@@ -134,6 +136,20 @@ class FrameProcessor:
             if can_act:
                 self.brain.local_cooldown_end = time.time()
                 logger.info("[WS] Cooldown selesai. Agen SIAP BERTINDAK!")
+                
+                # [REVISI SINKRONISASI COOLDOWN EXPIRED]: Jika cooldown baru selesai dan ada state turn aktif,
+                # paksa Brain berpikir ulang sekarang agar agen langsung bertindak tanpa diam 30 detik!
+                if self._last_state is not None:
+                    state = self._last_state
+                    if state.is_player_alive:
+                        action = self.brain.think(state)
+                        try:
+                            # Cetak pembaruan log visual dengan keputusan terbaru
+                            GUILogger.log_turn(state, action, True)
+                        except Exception:
+                            pass
+                        if action:
+                            await self.client.send_action(action)
             return
             
         elif frame_type == "game_ended":
