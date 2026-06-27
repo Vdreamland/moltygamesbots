@@ -41,7 +41,9 @@ class GoalSelector:
         if player.equipped_weapon is None:
             return "LOOT"
 
-        if state.turn >= 71 or current_region.is_death_zone:
+        # [REVISI AUDIT]: Mengubah batas turn dari >= 71 ke >= 45 karena pertandingan resmi 
+        # mutlak berakhir pada Turn 60. Ini memastikan bot beralih ke Survival di fase akhir.
+        if state.turn >= 45 or current_region.is_death_zone:
             return "SURVIVAL"
 
         return "COMBAT"
@@ -92,11 +94,9 @@ class GoalSelector:
                     new_utility -= 80.0
 
             elif mode == "COMBAT":
-                # [REVISI]: Cek musuh hidup murni di region lokal saat ini
                 enemies_same_region = sum(1 for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive)
                 
                 if enemies_same_region == 0:
-                    # Jika area lokal aman (musuh mati/kabur), beri bonus tinggi untuk memungut koin/sMoltz/jarahan sisa
                     if act_type == "pickup":
                         new_utility += 180.0
                 else:
