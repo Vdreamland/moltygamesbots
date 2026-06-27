@@ -35,7 +35,8 @@ src/
 │   │   ├── loot_strategy.py
 │   │   ├── equip_strategy.py
 │   │   ├── weapon_strategy.py
-│   │   └── consumable_strategy.py
+│   │   ├── ep_recovery_strategy.py
+│   │   └── hp_recovery_strategy.py
 │   │
 │   ├── survival/
 │   │   ├── survival_evaluator.py
@@ -56,7 +57,6 @@ src/
 │   └── constants.py
 │
 └── run.py
-
 link url
 
 ai>combat>
@@ -67,7 +67,8 @@ target_selector.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai
 win_probability.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/combat/win_probability.py
 
 ai>inventory>
-consumable_strategy.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/inventory/consumable_strategy.py
+hp_recovery_strategy.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/inventory/hp_recovery_strategy.py
+ep_recovery_strategy.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/inventory/ep_recovery_strategy.py
 equip_strategy.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/inventory/equip_strategy.py
 inventory_evaluator.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/inventory/inventory_evaluator.py
 loot_strategy.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/ai/inventory/loot_strategy.py
