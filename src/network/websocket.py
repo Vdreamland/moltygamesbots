@@ -30,24 +30,19 @@ class ClawRoyaleWSClient:
         self.is_running = True
         uri = f"{WS_BASE_URL}/join"
         
-        # Ambil API Key terverifikasi dari API Client, atau fallback ke config
         api_key_active = API_KEY
         if self.api_client and hasattr(self.api_client, "session"):
             api_key_active = self.api_client.session.headers.get("X-API-Key", API_KEY)
 
-        # Sediakan otentikasi murni lewat extra_headers X-API-Key (Sesuai Aturan API ClawRoyale)
         headers = {
             "X-API-Key": api_key_active
         }
 
-        # [REVISI COMPATIBILITY]: Deteksi versi websockets secara dinamis untuk menghindari 'extra_headers' TypeError
         connect_kwargs = {}
         try:
-            # websockets v13+ menggunakan 'additional_headers'
             import websockets.asyncio.client
             connect_kwargs["additional_headers"] = headers
         except ImportError:
-            # websockets v12 ke bawah menggunakan 'extra_headers'
             connect_kwargs["extra_headers"] = headers
 
         while self.is_running:
@@ -104,9 +99,29 @@ class ClawRoyaleWSClient:
             logger.info(f"\n[WS RECEIVE {frame_type.upper()}] Dari: {sender} | Pesan: '{content}'\n")
             return
 
+        # [REVISI HANDSHAKE]: Tangani Welcome Frame secara asinkron dengan benar
         elif frame_type == "welcome":
-            entry_type = payload.get("data", {}).get("entryType", "")
-            logger.info(f"[WS WELCOME] Memasuki game dengan status: {entry_type}")
+            welcome_msg = ""
+            data_val = payload.get("data")
+            if isinstance(data_val, str):
+                welcome_msg = data_val
+            elif isinstance(data_val, dict):
+                welcome_msg = data_val.get("entryType", "")
+            else:
+                welcome_msg = payload.get("message", "")
+
+            logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
+            
+            # Jika server meminta tipe ruangan, jawab instan dengan "free_room" untuk masuk antrean
+            if welcome_msg == "ASK_ENTRY_TYPE":
+                join_payload = {
+                    "type": "entry_type",
+                    "data": "free_room"
+                }
+                await self.websocket.send(json.dumps(join_payload))
+                logger.info("[WS JOIN] Memasuki Antrean Matchmaking (Free Room)...")
+            elif welcome_msg == "ALREADY_IN_GAME":
+                logger.info("[WS JOIN] Agen sudah berada di dalam game aktif. Menunggu Game State...")
             return
 
         elif frame_type == "action_result":
