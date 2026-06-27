@@ -1,114 +1,99 @@
 """
 src/ai/inventory/loot_strategy.py
-Tanggung jawab: Menganalisis ketersediaan item di wilayah tanah saat ini,
- menentukan kelayakan pungut (Pickup Rules) berdasarkan slot tas tersedia,
- dan memprioritaskan item berharga taktis tinggi.
+Tanggung jawab: Menentukan kelayakan memungut barang di tanah (Loot Rules).
+               Mencegah kepungan musuh dan menghindari pemungutan barang duplikat tak berguna.
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import List, Tuple
 from src.models.game_state import GameState
-from src.models.action import PickupAction
-from src.models.entities import Weapon, Armor, Potion
+from src.models.entities import Item, Weapon, Armor, Potion
+from src.models.action import Action, PickupAction
 from src.config.constants import MAX_INVENTORY_SLOTS
 
 logger = logging.getLogger("ClawRoyale.LootStrategy")
 
 class LootStrategy:
     @staticmethod
-    def evaluate_ground_loot(state: GameState) -> Optional[Tuple[PickupAction, float]]:
+    def _is_useless_duplicate(item: Item, inventory: List[Item], player) -> bool:
+        """Cegah pengambilan item tipe sama dengan tier yang lebih rendah/setara."""
+        if isinstance(item, Potion) or getattr(item, "type", "").lower() == "utility":
+            return False
+
+        if isinstance(item, Armor) and player.equipped_armor:
+            if player.equipped_armor.name == item.name and player.equipped_armor.tier >= item.tier:
+                return True
+
+        if isinstance(item, Weapon) and player.equipped_weapon:
+            if player.equipped_weapon.name == item.name and player.equipped_weapon.tier >= item.tier:
+                return True
+
+        for inv_item in inventory:
+            if inv_item.name == item.name and inv_item.tier >= item.tier:
+                return True
+
+        return False
+
+    @staticmethod
+    def evaluate_looting(state: GameState) -> List[Tuple[Action, float]]:
+        candidates: List[Tuple[Action, float]] = []
         player = state.player
-        current_region = state.current_region
+        ground_items = state.current_region.items
+        inventory = player.inventory
 
-        if len(player.inventory) >= MAX_INVENTORY_SLOTS:
-            logger.warning("[LOOT] Tas penuh! Mematikan evaluasi looting.")
-            return None
+        # 1. Batas Kapasitas Tas Maksimal
+        if len(inventory) >= MAX_INVENTORY_SLOTS:
+            return candidates
 
-        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == current_region.id and e.is_alive]
-        if len(enemies_in_same_region) >= 1:
+        # 2. Pengamanan Kepungan Musuh Aktif
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
+        if len(enemies_in_same_region) > 0:
             logger.warning("[LOOT] Ada musuh aktif di satu region. Menunda looting untuk keamanan.")
-            return None
+            return candidates
 
-        item_ids_in_bag = {item.id for item in player.inventory}
-
-        best_item = None
-        best_score = -1.0
-
-        for item in current_region.items:
-            if item.id in item_ids_in_bag:
+        for item in ground_items:
+            # [REVISI BARU - ANTI HOARDING]: Batasi penyimpanan senjata maksimal 2 unit (termasuk yang di-equip)
+            total_weapons = (1 if player.equipped_weapon else 0) + len([i for i in inventory if isinstance(i, Weapon)])
+            if isinstance(item, Weapon) and total_weapons >= 2:
+                logger.debug(f"[LOOT] Melewati senjata {item.name} karena sudah membawa maksimal 2 senjata taktis.")
                 continue
 
-            score = 0.0
-            
-            if isinstance(item, Weapon):
-                # [REVISI AMAN]: Anti-Duplikat Cerdas. Hanya abaikan jika kita sudah punya senjata dengan NAMA yang sama dan TIER setara/lebih tinggi
-                current_weapon = player.equipped_weapon
-                weapons_in_bag = [i for i in player.inventory if isinstance(i, Weapon)]
-                
-                has_better_or_equal_same_weapon = False
-                
-                if current_weapon and current_weapon.name.lower() == item.name.lower() and current_weapon.tier >= item.tier:
-                    has_better_or_equal_same_weapon = True
-                    
-                for w in weapons_in_bag:
-                    if w.name.lower() == item.name.lower() and w.tier >= item.tier:
-                        has_better_or_equal_same_weapon = True
-                        break
-                
-                if has_better_or_equal_same_weapon:
-                    continue
+            # Cegah duplikasi item tipe sama dengan tier lebih rendah/setara
+            if LootStrategy._is_useless_duplicate(item, inventory, player):
+                continue
 
+            score = 10.0
+
+            # C. Deteksi & Skor Prioritas Pemungutan
+            if isinstance(item, Weapon):
                 if player.equipped_weapon is None:
-                    # Senjata saat unarmed (Prioritas Teratas: Rank 1)
-                    score = 100.0 + (item.tier * 20.0)
+                    score = 100.0 + (item.tier * 20.0) # Prioritas mutlak jika bertangan kosong
                 else:
-                    # Senjata baru / tipe lain untuk opsi taktis (Prioritas Tinggi: Rank 2)
-                    score = 85.0 + (item.tier * 10.0)
+                    score = 85.0 + (item.tier * 15.0)  # Prioritas sedang untuk upgrade senjata
                     
             elif isinstance(item, Armor):
-                # [REVISI AMAN]: Anti-Duplikat Cerdas untuk baju zirah
-                current_armor = player.equipped_armor
-                armors_in_bag = [i for i in player.inventory if isinstance(i, Armor)]
+                potions_in_bag = [i for i in inventory if isinstance(i, Potion)]
                 
-                has_better_or_equal_same_armor = False
-                
-                if current_armor and current_armor.name.lower() == item.name.lower() and current_armor.tier >= item.tier:
-                    has_better_or_equal_same_armor = True
-                    
-                for a in armors_in_bag:
-                    if a.name.lower() == item.name.lower() and a.tier >= item.tier:
-                        has_better_or_equal_same_armor = True
-                        break
-                        
-                if has_better_or_equal_same_armor:
-                    continue
-
-                if player.equipped_armor is None:
-                    # Zirah saat telanjang dada (Prioritas Menengah-Tinggi: Rank 3)
-                    score = 70.0 + (item.tier * 20.0)
+                # [REVISI BARU - PRIORITAS ZIRAH]: Ambil armor jika tidak memakai armor dan masih memiliki ramuan pemulih
+                if player.equipped_armor is None and len(potions_in_bag) > 0:
+                    score = 110.0 + (item.tier * 20.0) # Melompat ke peringkat teratas
+                elif player.equipped_armor is None:
+                    score = 70.0 + (item.tier * 15.0)  # Prioritas sedang jika tidak memakai armor
                 else:
-                    # Zirah upgrade
-                    score = 15.0 + (item.tier * 10.0)
+                    score = 15.0 + (item.tier * 10.0)  # Prioritas rendah untuk upgrade armor
                     
             elif isinstance(item, Potion):
-                # Ramuan HP/EP (Prioritas Bawah: Rank 5)
                 score = 50.0 + (item.tier * 10.0)
                 
-            elif "smoltz" in item.name.lower():
-                # Koin mata uang taktis (Prioritas Menengah: Rank 4)
+            elif getattr(item, "type", "").lower() == "utility":
                 score = 60.0
+                
+            candidates.append((
+                PickupAction(
+                    item_id=item.id,
+                    thought=f"Memungut {item.name} dari tanah karena bernilai taktis tinggi (Skor: {score:.1f})."
+                ),
+                score
+            ))
 
-            else:
-                score = 5.0
-
-            if score > best_score:
-                best_score = score
-                best_item = item
-
-        if best_item and best_score > 0:
-            return PickupAction(
-                item_id=best_item.id,
-                thought=f"Memungut {best_item.name} dari tanah karena bernilai taktis tinggi (Skor: {best_score:.1f})."
-            ), best_score
-
-        return None
+        return candidates
