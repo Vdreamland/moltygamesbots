@@ -18,6 +18,17 @@ from src.config.constants import (
 
 logger = logging.getLogger("ClawRoyale.WebSocket")
 
+def is_ws_closed(ws: Any) -> bool:
+    """[REVISI COMPATIBILITY]: Cek status tutup soket yang kompatibel dengan semua versi websockets."""
+    if ws is None:
+        return True
+    # websockets v13+ menggunakan properti .state (Enum status)
+    if hasattr(ws, "state"):
+        state_str = str(ws.state).upper()
+        return "CLOSED" in state_str or "CLOSING" in state_str
+    # websockets v12 ke bawah menggunakan properti .closed (Boolean)
+    return getattr(ws, "closed", False)
+
 class ClawRoyaleWSClient:
     def __init__(self, api_client: Any = None, brain: Optional[Brain] = None):
         self.api_client = api_client
@@ -89,18 +100,8 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        # [REVISI INTEGRAL]: Deteksi Game State Utama secara presisi berdasarkan keberadaan kunci 'self' di dalam payload
-        # Mengikuti standard parser sensitif-format di GameState murni
-        is_game_state = False
-        if isinstance(payload, dict):
-            if "self" in payload:
-                is_game_state = True
-            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
-                is_game_state = True
-
-        if is_game_state:
+        # Deteksi Game State Utama secara presisi berdasarkan keberadaan kunci 'self' di dalam payload
+        if isinstance(payload, dict) and "self" in payload:
             state = GameState(payload)
             action = self.brain.think(state)
             if action:
@@ -148,7 +149,8 @@ class ClawRoyaleWSClient:
             return
 
     async def send_action(self, action):
-        if not self.websocket or self.websocket.closed:
+        # [REVISI COMPATIBILITY]: Gunakan fungsi pembantu is_ws_closed untuk verifikasi status soket
+        if not self.websocket or is_ws_closed(self.websocket):
             logger.error("[WS] Gagal mengirim aksi: Koneksi soket ditutup.")
             return
 
@@ -170,7 +172,8 @@ class ClawRoyaleWSClient:
     async def _send_ping_loop(self):
         while self.is_running:
             await asyncio.sleep(PING_INTERVAL_SECONDS)
-            if self.websocket and not self.websocket.closed:
+            # [REVISI COMPATIBILITY]: Gunakan fungsi pembantu is_ws_closed untuk verifikasi status soket
+            if self.websocket and not is_ws_closed(self.websocket):
                 try:
                     await self.websocket.ping()
                 except Exception:
