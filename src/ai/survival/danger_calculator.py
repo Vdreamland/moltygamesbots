@@ -52,8 +52,14 @@ class DangerCalculator:
         elif is_pending:
             storm_risk = 50.0 * WEIGHT_DANGER_STORM
 
+        # [REVISI JANGKAUAN]: Hanya hitung musuh hidup di region kita (Layer 0) atau tetangga (Layer 1)
+        close_enemies = [
+            e for e in visible_enemies 
+            if (e.region_id == current_region.id or e.region_id in current_region.connections) and e.is_alive
+        ]
+        
         enemy_risk = 0.0
-        enemy_count = len(visible_enemies)
+        enemy_count = len(close_enemies)
         if enemy_count > 0:
             enemy_ratio = min(1.0, enemy_count / 3.0)
             enemy_risk = enemy_ratio * 100.0 * WEIGHT_DANGER_ENEMY
@@ -64,6 +70,6 @@ class DangerCalculator:
         logger.debug(
             f"[DANGER CALC] Danger Score: {danger_score:.1f} | "
             f"RiskBreakdown -> HP:{hp_risk:.1f}, EP:{ep_risk:.1f}, "
-            f"Storm:{storm_risk:.1f}, Enemy:{enemy_risk:.1f}"
+            f"Storm:{storm_risk:.1f}, Enemy:{enemy_risk:.1f} (Close Enemies: {enemy_count})"
         )
         return danger_score
