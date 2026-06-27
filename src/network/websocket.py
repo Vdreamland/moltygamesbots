@@ -19,7 +19,6 @@ from src.config.constants import (
 logger = logging.getLogger("ClawRoyale.WebSocket")
 
 class ClawRoyaleWSClient:
-    # [REVISI CONSTRUCTOR]: Mengubah signature agar menerima api_client dan brain sesuai inisialisasi di run.py
     def __init__(self, api_client: Any = None, brain: Optional[Brain] = None):
         self.api_client = api_client
         self.brain = brain if brain is not None else Brain()
@@ -29,12 +28,28 @@ class ClawRoyaleWSClient:
 
     async def connect_and_loop(self):
         self.is_running = True
-        uri = f"{WS_BASE_URL}/join?apiKey={API_KEY}"
         
+        # [REVISI AMAN]: Gunakan WebSocket URI bersih murni tanpa kueri parameter
+        uri = f"{WS_BASE_URL}/join"
+        
+        # Ambil API Key terverifikasi dari API Client, atau fallback ke config
+        api_key_active = API_KEY
+        if self.api_client and hasattr(self.api_client, "session"):
+            api_key_active = self.api_client.session.headers.get("X-API-Key", API_KEY)
+
+        # [REVISI AMAN]: Sediakan otentikasi murni lewat extra_headers X-API-Key (Sesuai Aturan API ClawRoyale)
+        headers = {
+            "X-API-Key": api_key_active
+        }
+
         while self.is_running:
             try:
                 logger.info(f"[WS] Menghubungkan ke: {uri}")
-                async with websockets.connect(uri, open_timeout=WS_TIMEOUT_SECONDS) as websocket:
+                async with websockets.connect(
+                    uri, 
+                    open_timeout=WS_TIMEOUT_SECONDS, 
+                    extra_headers=headers
+                ) as websocket:
                     self.websocket = websocket
                     self.reconnect_attempts = 0
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
