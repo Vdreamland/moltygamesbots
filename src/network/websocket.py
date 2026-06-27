@@ -78,6 +78,11 @@ class ClawRoyaleWSClient:
                     self.reconnect_attempts = 0
                     self._dead_flag_logged = False
                     self._finished_flag_logged = False
+                    
+                    # [BARU - RESET MEMORI GAME BARU]: Bersihkan sisa ingatan/turn game lama dari processor
+                    self.processor._last_state = None
+                    self.processor._last_turn_dead = None
+                    
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
                     ping_task = asyncio.create_task(self._send_ping_loop())
