@@ -1,87 +1,66 @@
 """
-src/ai/brain.py
-Tanggung jawab: Entry point berpikir AI, mengintegrasikan memori, seluruh sub-evaluator,
-               dan menyelaraskan status Darurat secara presisi dengan State Machine (GoalSelector).
+src/ai/planner.py
+Tanggung jawab: Mengelola multi-step action, antrian tugas (queue), 
+serta validasi akhir sebelum aksi diteruskan ke network layer.
 """
 
 import logging
-from typing import Optional
+import time
+from typing import List, Optional, Deque
+from collections import deque
 from src.models.game_state import GameState
 from src.models.action import Action
-from src.ai.memory.world_model import WorldModel
-from src.ai.planner import Planner
-from src.ai.evaluator import Evaluator
-from src.ai.action_selector import ActionSelector
-from src.ai.strategy.goal_selector import GoalSelector
 
-from src.ai.combat.combat_evaluator import CombatEvaluator
-from src.ai.movement.movement_evaluator import MovementEvaluator
-from src.ai.inventory.inventory_evaluator import InventoryEvaluator
-from src.ai.survival.survival_evaluator import SurvivalEvaluator
+logger = logging.getLogger("ClawRoyale.Planner")
 
-logger = logging.getLogger("ClawRoyale.Brain")
-
-class Brain:
+class Planner:
     def __init__(self):
-        self.memory = WorldModel()
-        self.planner = Planner()
-        self.evaluator = Evaluator()
-        self.selector = ActionSelector()
-        
-        self.combat_eval = CombatEvaluator()
-        self.movement_eval = MovementEvaluator()
-        self.inventory_eval = InventoryEvaluator()
-        self.survival_eval = SurvivalEvaluator()
-        
-        self.evaluator.inject_sub_evaluators(
-            combat=self.combat_eval,
-            movement=self.movement_eval,
-            inventory=self.inventory_eval,
-            survival=self.survival_eval
-        )
-        
-        self.emergency_mode_active = False
+        self.action_queue: Deque[Action] = deque()
+        self.last_pop_time: float = 0.0
 
-    def think(self, state: GameState) -> Action:
-        logger.info(f"=== [BRAIN] MEMULAI BERPIKIR TURN {state.turn} ===")
-        
-        self.memory.update(state)
-        self.memory.clean_expired_memories(state.turn)
+    def add_actions(self, actions: List[Action]):
+        for action in actions:
+            self.action_queue.append(action)
+        logger.info(f"[PLANNER] Menambahkan {len(actions)} aksi ke queue. Total: {len(self.action_queue)}")
 
-        current_mode = GoalSelector.get_current_mode(state)
-        is_in_storm = state.current_region.is_death_zone
-        
-        if current_mode == "RETREAT" or is_in_storm:
-            if not self.emergency_mode_active:
-                logger.warning(f"[BRAIN] !!! DARURAT !!! EMERGENCY MODE DIAKTIFKAN. (Sebab: {current_mode})")
-                self.emergency_mode_active = True
-                self.planner.clear(reason=f"Emergency Mode Active ({current_mode})")
+    def get_next_action(self, state: GameState) -> Optional[Action]:
+        if not self.action_queue:
+            return None
+
+        # [REVISI ANTI-SPAM]: Kunci mekanis waktu. Dilarang melepaskan aksi > 1 kali per 2.0 detik.
+        current_time = time.time()
+        if current_time - self.last_pop_time < 2.0:
+            return None
+
+        data_payload = getattr(state, "data_payload", {})
+        can_act = data_payload.get("canAct")
+        if can_act is None:
+            can_act = data_payload.get("view", {}).get("canAct")
+        if can_act is None:
+            can_act = data_payload.get("data", {}).get("canAct")
+        if can_act is None:
+            can_act = True
+
+        if not can_act:
+            next_action = self.action_queue[0]
+            if not getattr(next_action, "is_free_action", False):
+                logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis di antrean.")
+                return None
+
+        action = self.action_queue.popleft()
+        self.last_pop_time = current_time
+        logger.info(f"[PLANNER] Mengambil aksi: {type(action).__name__} | Thought: {getattr(action, 'thought', 'None')}")
+        return action
+
+    def clear(self, reason: str = ""):
+        if reason:
+            logger.warning(f"[PLANNER] Queue dibersihkan secara paksa oleh Brain. Alasan: {reason}")
         else:
-            if self.emergency_mode_active:
-                logger.info("[BRAIN] Kondisi membaik. Emergency Mode dinonaktifkan.")
-                self.emergency_mode_active = False
+            logger.warning("[PLANNER] Queue dibersihkan secara paksa oleh Brain.")
+        self.action_queue.clear()
 
-        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
-        
-        # [REVISI ANTI-SPAM]: Menghentikan eksekusi fall-through. Jika planner punya aksi tapi sedang menahan (cooldown), kembalikan None!
-        if self.planner.has_actions() and not self.emergency_mode_active:
-            if enemies_in_same_region:
-                logger.warning("[BRAIN] Musuh terdeteksi di area yang sama selama eksekusi rencana berantai. Membersihkan Planner!")
-                self.planner.clear(reason="Enemy entered current region")
-            else:
-                return self.planner.get_next_action(state)
+    def has_actions(self) -> bool:
+        return len(self.action_queue) > 0
 
-        # Hanya lakukan evaluasi jika planner benar-benar kosong
-        if not self.planner.has_actions():
-            candidates = self.evaluator.evaluate_all_options(state, self.memory)
-            candidates = GoalSelector.select_goal_and_adjust(candidates, state)
-            final_action = self.selector.validate_and_select(candidates, state)
-            
-            if final_action:
-                if final_action.action_type == "move" and self.emergency_mode_active:
-                    self.memory.record_retreat_movement(state.current_region.id, state.turn)
-                self.planner.add_actions([final_action])
-                
-            return self.planner.get_next_action(state)
-
-        return None
+    def has_pending_actions(self) -> bool:
+        return len(self.action_queue) > 0
