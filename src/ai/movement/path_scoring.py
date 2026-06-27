@@ -1,8 +1,8 @@
 """
 src/ai/movement/path_scoring.py
 Tanggung jawab: Menilai kelayakan jalur wilayah tetangga secara matematis.
- Mempertimbangkan EP Cost, Ground Loot, risiko musuh,
- dan mengarahkan rute menuju Ruins jika berada dalam LOOT MODE.
+               Mempertimbangkan EP Cost, Ground Loot, risiko musuh,
+               dan mengarahkan rute menuju Ruins jika berada dalam LOOT MODE.
 """
 
 import logging
@@ -21,8 +21,13 @@ class PathScoring:
         score = 0.0
         current_turn = state.turn
 
-        # [REVISI]: Berikan penalti mutlak murni jika region terdeteksi di pending atau diingat di memori badai
-        if region_id in state.pending_deathzones or memory.is_known_death_zone(region_id):
+        # [BARU - DETEKSI BADAI AKTIF]: Cek apakah wilayah tujuan sudah resmi aktif ditelan badai (Death Zone)
+        is_active_death_zone = False
+        if region_id in state.regions:
+            is_active_death_zone = state.regions[region_id].is_death_zone
+
+        # [PERBAIKAN]: Berikan penalti mutlak murni jika region pending, sudah aktif badai, atau diingat di memori badai
+        if region_id in state.pending_deathzones or is_active_death_zone or memory.is_known_death_zone(region_id):
             score -= 2000.0
 
         active_enemies_in_target = sum(1 for e in state.visible_enemies if e.region_id == region_id and e.is_alive)
@@ -38,7 +43,7 @@ class PathScoring:
         if current_turn >= 30:
             known_conn_count = memory.known_connections.get(region_id, 4)
             if known_conn_count >= 5:
-                score += 30.0 
+                score += 30.0  
             elif known_conn_count <= 3:
                 score -= 100.0 
 
@@ -62,7 +67,7 @@ class PathScoring:
                 score += 10.0
 
         from src.ai.strategy.goal_selector import GoalSelector
-        current_mode = GoalSelector.get_current_mode(state)
+        current_mode = GoalSelector.get_current_mode(state)  
         
         ruin_bonus = 0.0
         loot_weapon_bonus = 0.0
@@ -81,7 +86,8 @@ class PathScoring:
         explore_score = ExplorationStrategy.calculate_exploration_score(region_id, memory, current_turn)
         score += explore_score + ruin_bonus + loot_weapon_bonus
 
-        is_water_or_storm = region_id in state.pending_deathzones or memory.is_known_death_zone(region_id) or region_id.lower().startswith("water")
+        # [PERBAIKAN]: Sinkronisasi filter air & badai aktif untuk penalti ep cost melangkah
+        is_water_or_storm = region_id in state.pending_deathzones or is_active_death_zone or memory.is_known_death_zone(region_id) or region_id.lower().startswith("water")
         if is_water_or_storm:
             score -= 40.0
 
