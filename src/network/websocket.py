@@ -98,7 +98,16 @@ class ClawRoyaleWSClient:
             return
 
         # Deteksi Game State Utama secara presisi berdasarkan keberadaan kunci 'self' di dalam payload
-        if isinstance(payload, dict) and "self" in payload:
+        is_game_state = False
+        if isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
+                is_game_state = True
+
+        if is_game_state:
             state = GameState(payload)
             action = self.brain.think(state)
             if action:
@@ -125,12 +134,13 @@ class ClawRoyaleWSClient:
 
             logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            # [REVISI HANDSHAKE]: Cek secara longgar jika server meminta pilihan tipe ruangan
             welcome_lower = welcome_msg.lower()
             if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
+                # [REVISI HANDSHAKE]: Menggunakan camelCase 'entryType' sesuai pembaruan skema server terbaru
                 join_payload = {
-                    "type": "entry_type",
-                    "data": "free"
+                    "type": "entryType",
+                    "data": "free",
+                    "entryType": "free" # Fallback inject root-level
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
