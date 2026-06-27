@@ -57,6 +57,7 @@ class ClawRoyaleWSClient:
                     self.reconnect_attempts = 0
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
+                    # Daftarkan background task untuk Ping/Pong Keepalive
                     ping_task = asyncio.create_task(self._send_ping_loop())
                     
                     try:
@@ -88,8 +89,18 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        # [REVISI INTEGRAL]: Deteksi Game State Utama berdasarkan keberadaan 'player' di root level JSON
-        if isinstance(payload, dict) and "player" in payload:
+        # [REVISI INTEGRAL]: Deteksi Game State Utama secara presisi berdasarkan keberadaan kunci 'self' di dalam payload
+        # Mengikuti standard parser sensitif-format di GameState murni
+        is_game_state = False
+        if isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
+                is_game_state = True
+
+        if is_game_state:
             state = GameState(payload)
             action = self.brain.think(state)
             if action:
