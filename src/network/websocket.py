@@ -1,7 +1,8 @@
 """
 src/network/websocket.py
 Tanggung jawab: Menangani koneksi WebSocket terpadu, pemrosesan frame masuk,
-               ping/pong keepalive, auto-reconnect, dan pengamanan soket (Safe-Filter).
+               ping/pong keepalive, auto-reconnect, pengamanan soket (Safe-Filter),
+               serta menampilkan GUI Player Stats ke konsol.
 """
 
 import asyncio
@@ -12,6 +13,7 @@ import websockets
 from typing import Optional, Any
 from src.models.game_state import GameState
 from src.ai.brain import Brain
+from src.network.gui_logger import GUILogger  # [REVISI GUI]: Import GUI Logger murni
 from src.config.constants import (
     WS_BASE_URL, API_KEY, PING_INTERVAL_SECONDS, 
     WS_TIMEOUT_SECONDS, MAX_CONNECTION_RETRIES, RECONNECT_DELAY_SECONDS
@@ -101,22 +103,6 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        is_game_state = False
-        if isinstance(payload, dict):
-            if "self" in payload:
-                is_game_state = True
-            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
-                is_game_state = True
-
-        if is_game_state:
-            state = GameState(payload)
-            action = self.brain.think(state)
-            if action:
-                await self.send_action(action)
-            return
-
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
         if frame_type in ["chat", "whisper", "talk", "broadcast"]:
@@ -126,26 +112,17 @@ class ClawRoyaleWSClient:
             return
 
         elif frame_type == "welcome":
-            welcome_msg = ""
-            data_val = payload.get("data")
-            if isinstance(data_val, str):
-                welcome_msg = data_val
-            elif isinstance(data_val, dict):
-                welcome_msg = data_val.get("entryType", "")
-            else:
-                welcome_msg = payload.get("message", "")
-
-            logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
+            decision = payload.get("decision", "")
+            logger.info(f"[WS JOIN] Welcome Frame Decision: {decision}")
             
-            welcome_lower = welcome_msg.lower()
-            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
+            if decision == "ASK_ENTRY_TYPE":
                 join_payload = {
                     "type": "hello",
                     "entryType": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
+            elif decision == "ALREADY_IN_GAME":
                 logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
             return
 
@@ -155,7 +132,6 @@ class ClawRoyaleWSClient:
             reason = data_block.get("reason", "None")
             cd_rem = data_block.get("cooldownRemainingMs")
             
-            # Sempurnakan sinkronisasi tracker lokal dengan info timer murni dari server
             if cd_rem is not None:
                 self.brain.local_cooldown_end = time.time() + (cd_rem / 1000.0)
                 
@@ -165,6 +141,28 @@ class ClawRoyaleWSClient:
             else:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
+
+        is_game_state = False
+        if frame_type in ["agent_view", "turn_advanced"]:
+            is_game_state = True
+        elif isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+
+        if is_game_state:
+            state = GameState(payload)
+            action = self.brain.think(state)
+            
+            # [REVISI GUI MURNI]: Cetak papan UI Console Stats Player ke layar setiap kali state baru masuk
+            try:
+                GUILogger.log_turn(state, action)
+            except Exception as e:
+                logger.debug(f"[GUI ERROR] Gagal merender UI Player Stats: {str(e)}")
+
+            if action:
+                await self.send_action(action)
 
     async def send_action(self, action):
         if not self.websocket or is_ws_closed(self.websocket):
@@ -184,7 +182,6 @@ class ClawRoyaleWSClient:
             await self.websocket.send(json.dumps(payload))
             logger.info(f"[WS SEND] Mengirim aksi: {action.action_type}")
             
-            # Blokir mandiri selama 30 detik untuk aksi berat agar tidak pernah ada spam murni
             if action.action_type not in ["pickup", "equip", "talk"]:
                 self.brain.local_cooldown_end = time.time() + 30.0
                 
