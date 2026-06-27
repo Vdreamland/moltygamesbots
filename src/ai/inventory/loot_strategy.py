@@ -5,7 +5,7 @@ Tanggung jawab: Menentukan kelayakan memungut barang di tanah (Loot Rules).
 """
 
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 from src.models.game_state import GameState
 from src.models.entities import Item, Weapon, Armor, Potion
 from src.models.action import Action, PickupAction
@@ -34,12 +34,27 @@ class LootStrategy:
 
         return False
 
+    # [PENYEMPURNAAN]: Dibuat mendukung pemanggilan sebagai StaticMethod maupun Instance Method (*args, **kwargs)
+    # untuk menghindari crash penanganan parameter 'self' dari inventory_evaluator.py
     @staticmethod
-    def evaluate_ground_loot(state: GameState) -> Optional[Tuple[Action, float]]:
+    def evaluate_ground_loot(*args, **kwargs) -> Optional[Tuple[Action, float]]:
         """
         Wrapper method kompatibilitas untuk inventory_evaluator.py.
-        Mengambil daftar kandidat looting, lalu mengembalikan kandidat tunggal dengan skor tertinggi.
+        Mendukung pemanggilan statis maupun instansi secara aman.
         """
+        # Resolusi state secara fail-safe dari argumen yang dilemparkan
+        state: Optional[GameState] = None
+        for arg in args:
+            if isinstance(arg, GameState):
+                state = arg
+                break
+        if not state:
+            state = kwargs.get("state")
+
+        if not state:
+            logger.error("[LOOT] Gagal mengevaluasi ground loot: GameState tidak ditemukan dalam parameter.")
+            return None
+
         candidates = LootStrategy.evaluate_looting(state)
         if not candidates:
             return None
@@ -64,7 +79,7 @@ class LootStrategy:
             return candidates
 
         for item in ground_items:
-            # [PERBAIKAN - ANTI PENIMBUNAN SENJATA]: Batasi penyimpanan senjata maksimal 2 unit
+            # [ANTI PENIMBUNAN SENJATA]: Batasi penyimpanan senjata maksimal 2 unit
             current_weapons = []
             if player.equipped_weapon:
                 current_weapons.append(player.equipped_weapon)
@@ -84,7 +99,7 @@ class LootStrategy:
                     logger.debug(f"[LOOT] Melewati senjata {item.name} (Skor: {new_weapon_score:.1f}) karena sudah memiliki 2 senjata yang lebih kuat.")
                     continue
 
-            # [PERBAIKAN - ANTI PENIMBUNAN ZIRAH]: Batasi penyimpanan baju zirah maksimal 2 unit
+            # [ANTI PENIMBUNAN ZIRAH]: Batasi penyimpanan baju zirah maksimal 2 unit
             current_armors = []
             if player.equipped_armor:
                 current_armors.append(player.equipped_armor)
