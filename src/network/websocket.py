@@ -57,7 +57,6 @@ class ClawRoyaleWSClient:
                     self.reconnect_attempts = 0
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
-                    # Daftarkan background task untuk Ping/Pong Keepalive
                     ping_task = asyncio.create_task(self._send_ping_loop())
                     
                     try:
@@ -89,17 +88,22 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        frame_type = payload.get("type", "").lower()
+        # [REVISI INTEGRAL]: Deteksi Game State Utama berdasarkan keberadaan 'player' di root level JSON
+        if isinstance(payload, dict) and "player" in payload:
+            state = GameState(payload)
+            action = self.brain.think(state)
+            if action:
+                await self.send_action(action)
+            return
 
-        # [REVISI KEAMANAN]: Safe-Type Filter Gatekeeper
-        # Blokir dan isolasi pesan obrolan atau bisikan bot lain agar tidak masuk ke GameState / Brain
+        frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
+
         if frame_type in ["chat", "whisper"]:
             sender = payload.get("sender", "Unknown")
             content = payload.get("message", "")
             logger.info(f"\n[WS RECEIVE {frame_type.upper()}] Dari: {sender} | Pesan: '{content}'\n")
             return
 
-        # [REVISI HANDSHAKE]: Tangani Welcome Frame secara asinkron dengan benar
         elif frame_type == "welcome":
             welcome_msg = ""
             data_val = payload.get("data")
@@ -112,7 +116,6 @@ class ClawRoyaleWSClient:
 
             logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            # Jika server meminta tipe ruangan, jawab instan dengan "free_room" untuk masuk antrean
             if welcome_msg == "ASK_ENTRY_TYPE":
                 join_payload = {
                     "type": "entry_type",
@@ -120,8 +123,8 @@ class ClawRoyaleWSClient:
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Memasuki Antrean Matchmaking (Free Room)...")
-            elif welcome_msg == "ALREADY_IN_GAME":
-                logger.info("[WS JOIN] Agen sudah berada di dalam game aktif. Menunggu Game State...")
+            elif "active game found" in welcome_msg.lower() or welcome_msg == "ALREADY_IN_GAME":
+                logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
             return
 
         elif frame_type == "action_result":
@@ -132,15 +135,6 @@ class ClawRoyaleWSClient:
             else:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
-
-        # Hanya game_state yang diizinkan memicu proses berpikir taktis (Brain.think)
-        elif frame_type in ["game_state", "state"]:
-            game_data = payload.get("data", {})
-            state = GameState(game_data)
-            
-            action = self.brain.think(state)
-            if action:
-                await self.send_action(action)
 
     async def send_action(self, action):
         if not self.websocket or self.websocket.closed:
