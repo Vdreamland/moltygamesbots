@@ -34,6 +34,14 @@ class PathScoring:
         if memory.is_loop_forbidden(region_id, current_turn):
             score -= 500.0
 
+        # [REVISI JANGKAUAN MAP]: Bias Penarik ke Tengah (Center-Seeking) untuk mencegah terjebak di ujung map saat badai menutup
+        if current_turn >= 30:
+            known_conn_count = memory.known_connections.get(region_id, 4)
+            if known_conn_count >= 5:
+                score += 30.0 # Dorong bot masuk ke area tengah yang padat koneksi
+            elif known_conn_count <= 3:
+                score -= 100.0 # Jauhi jalan buntu dan sudut luar ujung map
+
         target_items = []
         if region_id == state.current_region.id:
             target_items = state.current_region.items
@@ -65,7 +73,6 @@ class PathScoring:
                 ruin_bonus = 150.0
                 logger.info(f"[PATH SCORING] Region {region_id} diberi bonus Reruntuhan (+150) karena dalam LOOT MODE.")
             
-            # [REVISI]: Jika tidak membawa senjata, prioritaskan wilayah sebelah yang memiliki senjata di tanah (meskipun ada musuh/monster)
             has_weapon_in_target = any(item.type == "weapon" for item in target_items)
             if has_weapon_in_target:
                 loot_weapon_bonus = 350.0

@@ -40,8 +40,9 @@ class WorldModel:
         self.enemy_registry: Dict[str, EnemyTrack] = {}
         self.retreat_danger_regions: Dict[str, int] = {}
         self.retreat_exit_history: List[tuple[int, str]] = []
-        # [REVISI]: Menyimpan memori barang di tanah per region
         self.known_loot: Dict[str, List[Any]] = {}
+        # [REVISI]: Perekam topologi jumlah koneksi per wilayah
+        self.known_connections: Dict[str, int] = {}
 
     def update(self, state: GameState):
         current_turn = state.turn
@@ -49,8 +50,10 @@ class WorldModel:
         
         self.visited_regions_history.append((current_turn, current_region_id))
         
-        # [REVISI]: Otomatis rekam sisa barang di tanah region saat ini ke memori
         self.update_known_loot(current_region_id, state.current_region.items)
+        
+        # [REVISI]: Rekam jumlah koneksi wilayah aktif ke dalam memori
+        self.known_connections[current_region_id] = len(state.current_region.connections)
 
         for enemy in state.visible_enemies:
             if enemy.id not in self.enemy_registry:
