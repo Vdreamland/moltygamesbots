@@ -37,7 +37,7 @@ class MovementEvaluator:
                 ))
                 return candidates
 
-        # [REVISI]: Filter musuh hidup saja di region saat ini
+        # Deteksi musuh di region saat ini
         enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
 
         if player.equipped_weapon and player.hp > 40 and player.ep > 3 and len(enemies_in_same_region) == 0:
@@ -69,7 +69,10 @@ class MovementEvaluator:
             ))
 
         ruin_gauge = state.current_region.ruin_gauge
-        if ruin_gauge > 0 and ruin_gauge < 100:
+        
+        # [REVISI META]: Hanya izinkan eksplorasi reruntuhan jika bot sudah bersenjata (player.equipped_weapon is not None).
+        # Menghindari pemborosan EP taktis saat bot sedang bertelanjang dada mencari senjata di awal game.
+        if ruin_gauge > 0 and ruin_gauge < 100 and player.equipped_weapon is not None:
             explore_utility = WEIGHT_GOAL_EXPLORE + 30.0
             candidates.append((
                 ExploreAction(
