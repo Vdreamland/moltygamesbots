@@ -31,6 +31,19 @@ class AttackStrategy:
             (target.equipped_weapon is None and target.region_id == state.current_region.id)
         )
 
+        # [REVISI JANGKAUAN]: Cek apakah target berada di dalam jangkauan senjata murni saat ini
+        distance = 0
+        if target.region_id != state.current_region.id:
+            if target.region_id in state.current_region.connections:
+                distance = 1
+            else:
+                distance = 2
+                
+        weapon_range = player.equipped_weapon.range if player.equipped_weapon else 0
+        if distance > weapon_range:
+            logger.warning(f"[ATTACK CHECK] Ditolak: Target {target.name} berada di luar jangkauan (Jarak: {distance}, Range Senjata: {weapon_range}).")
+            return False
+
         if not player.equipped_weapon and not is_unarmed_finisher:
             logger.warning("[ATTACK CHECK] Ditolak: Agen tidak membawa senjata.")
             return False

@@ -65,11 +65,16 @@ class Weapon(Item):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Weapon":
         if not data:
-            return cls(id="", name="Fists", type="weapon", tier=0, damage=5, range=1, ep_cost=1)
+            return cls(id="", name="Fists", type="weapon", tier=0, damage=5, range=0, ep_cost=1)
         
         nested_item = data.get("item")
         source_name = nested_item if isinstance(nested_item, dict) else data
         stats = source_name.get("stats", data.get("stats", {})) or {}
+        iname = str(source_name.get("name", "")).lower()
+
+        # [REVISI]: Senjata Melee (Dagger, Fists, Sword, Knife, Axe, Spear) memiliki default range = 0 (hanya region sendiri)
+        default_range = 0 if any(keyword in iname for keyword in ["dagger", "fists", "sword", "knife", "axe", "spear"]) else 1
+        w_range = safe_int(stats.get("range", source_name.get("range", default_range)), default_range)
         
         return cls(
             id=data.get("id", source_name.get("id", "")),
@@ -77,7 +82,7 @@ class Weapon(Item):
             type="weapon",
             tier=safe_int(source_name.get("tier", data.get("tier", 1)), 1),
             damage=safe_int(stats.get("damage", data.get("damage", 5)), 5),
-            range=safe_int(stats.get("range", data.get("range", 1)), 1),
+            range=w_range,
             ep_cost=safe_int(stats.get("epCost", data.get("ep_cost", 1)), 1),
             raw_data=data
         )
@@ -121,8 +126,6 @@ class Potion(Item):
         stats = source_name.get("stats", {}) or {}
         iname = str(source_name.get("name", "")).lower()
         
-        # [REVISI]: Keluarkan "smoltz" dari recovery ramuan, sMoltz adalah koin.
-        # Pindahkan "food" ke kategori "hp" agar Emergency Food memicu penyembuhan HP.
         is_ep = any(keyword in iname for keyword in ["snack", "energy", "candy", "soda", "potion_ep"])
         rec_type = "ep" if is_ep else "hp"
         
@@ -198,7 +201,6 @@ class Region:
             
             iname = str(source_name.get("name", "")).lower()
             
-            # [REVISI]: Keluarkan "smoltz" dari ep_recovery, tambahkan "food" ke hp_recovery
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
@@ -277,7 +279,6 @@ class Agent:
             
             iname = str(source_name.get("name", "")).lower()
             
-            # [REVISI]: Keluarkan "smoltz" dari ep_recovery, tambahkan "food" ke hp_recovery
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
