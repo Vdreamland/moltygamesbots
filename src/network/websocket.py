@@ -28,8 +28,6 @@ class ClawRoyaleWSClient:
 
     async def connect_and_loop(self):
         self.is_running = True
-        
-        # [REVISI AMAN]: Gunakan WebSocket URI bersih murni tanpa kueri parameter
         uri = f"{WS_BASE_URL}/join"
         
         # Ambil API Key terverifikasi dari API Client, atau fallback ke config
@@ -37,10 +35,20 @@ class ClawRoyaleWSClient:
         if self.api_client and hasattr(self.api_client, "session"):
             api_key_active = self.api_client.session.headers.get("X-API-Key", API_KEY)
 
-        # [REVISI AMAN]: Sediakan otentikasi murni lewat extra_headers X-API-Key (Sesuai Aturan API ClawRoyale)
+        # Sediakan otentikasi murni lewat extra_headers X-API-Key (Sesuai Aturan API ClawRoyale)
         headers = {
             "X-API-Key": api_key_active
         }
+
+        # [REVISI COMPATIBILITY]: Deteksi versi websockets secara dinamis untuk menghindari 'extra_headers' TypeError
+        connect_kwargs = {}
+        try:
+            # websockets v13+ menggunakan 'additional_headers'
+            import websockets.asyncio.client
+            connect_kwargs["additional_headers"] = headers
+        except ImportError:
+            # websockets v12 ke bawah menggunakan 'extra_headers'
+            connect_kwargs["extra_headers"] = headers
 
         while self.is_running:
             try:
@@ -48,7 +56,7 @@ class ClawRoyaleWSClient:
                 async with websockets.connect(
                     uri, 
                     open_timeout=WS_TIMEOUT_SECONDS, 
-                    extra_headers=headers
+                    **connect_kwargs
                 ) as websocket:
                     self.websocket = websocket
                     self.reconnect_attempts = 0
