@@ -15,7 +15,7 @@ class GUILogger:
     def log_turn(state: GameState, action: Optional[Action], can_act: bool = True):
         player = state.player
         region = state.current_region
-        all_regions = state.all_regions # Ambil referensi seluruh wilayah dari GameState
+        all_regions = getattr(state, "regions", {}) # Diperbaiki ke atribut resmi GameState: state.regions
         
         # Deteksi status badai
         danger_status = "AMAN" if not region.is_death_zone else "DEATH_ZONE"
@@ -55,7 +55,7 @@ class GUILogger:
         ground_items = getattr(region, "items", [])
         ground_items_desc = ", ".join([f"{item.name} ({getattr(item, 'item_type', getattr(item, 'type', 'item'))})" for item in ground_items]) if ground_items else "None"
 
-        # [BARU]: Menerjemahkan seluruh UUID koneksi tetangga menjadi Nama Asli Region yang User-Friendly
+        # Menerjemahkan seluruh UUID koneksi tetangga menjadi Nama Asli Region yang User-Friendly
         conn_names = []
         for r_id in region.connections:
             conn_region = all_regions.get(r_id)
