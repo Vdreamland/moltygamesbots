@@ -83,7 +83,7 @@ class Brain:
         
         # Skenario A: Eksekusi rencana taktis berantai di Planner yang tertunda (jika aman)
         if self.planner.has_actions() and not self.emergency_mode_active:
-            next_action = self.planner.get_next_action()
+            next_action = self.planner.get_next_action(state)
             if next_action:
                 return next_action
 
