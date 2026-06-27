@@ -21,7 +21,8 @@ class PathScoring:
         score = 0.0
         current_turn = state.turn
 
-        if region_id in state.pending_deathzones:
+        # [REVISI]: Berikan penalti mutlak murni jika region terdeteksi di pending atau diingat di memori badai
+        if region_id in state.pending_deathzones or memory.is_known_death_zone(region_id):
             score -= 2000.0
 
         active_enemies_in_target = sum(1 for e in state.visible_enemies if e.region_id == region_id and e.is_alive)
@@ -34,13 +35,12 @@ class PathScoring:
         if memory.is_loop_forbidden(region_id, current_turn):
             score -= 500.0
 
-        # [REVISI JANGKAUAN MAP]: Bias Penarik ke Tengah (Center-Seeking) untuk mencegah terjebak di ujung map saat badai menutup
         if current_turn >= 30:
             known_conn_count = memory.known_connections.get(region_id, 4)
             if known_conn_count >= 5:
-                score += 30.0 # Dorong bot masuk ke area tengah yang padat koneksi
+                score += 30.0 
             elif known_conn_count <= 3:
-                score -= 100.0 # Jauhi jalan buntu dan sudut luar ujung map
+                score -= 100.0 
 
         target_items = []
         if region_id == state.current_region.id:
@@ -81,7 +81,7 @@ class PathScoring:
         explore_score = ExplorationStrategy.calculate_exploration_score(region_id, memory, current_turn)
         score += explore_score + ruin_bonus + loot_weapon_bonus
 
-        is_water_or_storm = region_id in state.pending_deathzones or region_id.lower().startswith("water")
+        is_water_or_storm = region_id in state.pending_deathzones or memory.is_known_death_zone(region_id) or region_id.lower().startswith("water")
         if is_water_or_storm:
             score -= 40.0
 

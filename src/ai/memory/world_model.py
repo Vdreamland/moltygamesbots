@@ -7,7 +7,7 @@ Tanggung jawab: Mengingat region yang dilewati, ground loot, jejak musuh,
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 from src.models.entities import Agent, Weapon
 from src.models.game_state import GameState
 
@@ -41,8 +41,9 @@ class WorldModel:
         self.retreat_danger_regions: Dict[str, int] = {}
         self.retreat_exit_history: List[tuple[int, str]] = []
         self.known_loot: Dict[str, List[Any]] = {}
-        # [REVISI]: Perekam topologi jumlah koneksi per wilayah
         self.known_connections: Dict[str, int] = {}
+        # [REVISI MEMORI BADAI]: Set memori persisten wilayah yang sudah tertutup / akan ditutup badai
+        self.storm_death_zones: Set[str] = set()
 
     def update(self, state: GameState):
         current_turn = state.turn
@@ -52,8 +53,12 @@ class WorldModel:
         
         self.update_known_loot(current_region_id, state.current_region.items)
         
-        # [REVISI]: Rekam jumlah koneksi wilayah aktif ke dalam memori
         self.known_connections[current_region_id] = len(state.current_region.connections)
+
+        # [REVISI MEMORI BADAI]: Rekam semua pending deathzones dari server ke dalam memori persisten
+        if state.pending_deathzones:
+            for dz in state.pending_deathzones:
+                self.storm_death_zones.add(dz)
 
         for enemy in state.visible_enemies:
             if enemy.id not in self.enemy_registry:
@@ -101,6 +106,10 @@ class WorldModel:
 
     def get_known_loot(self, region_id: str) -> List[Any]:
         return self.known_loot.get(region_id, [])
+
+    # Helper murni untuk mengecek memori badai maut
+    def is_known_death_zone(self, region_id: str) -> bool:
+        return region_id in self.storm_death_zones
 
     def clean_expired_memories(self, current_turn: int):
         expired_danger_keys = [
