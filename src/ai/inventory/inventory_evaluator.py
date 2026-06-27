@@ -24,7 +24,7 @@ class InventoryEvaluator:
     def evaluate(self, state: GameState, memory: WorldModel) -> List[Tuple[Action, float]]:
         options: List[Tuple[Action, float]] = []
 
-        # 1. Evaluasi Looting (Memanggil metode yang benar: evaluate_ground_loot)
+        # 1. Evaluasi Looting
         loot_result = self.loot_strategy.evaluate_ground_loot(state)
         if loot_result:
             loot_action, score = loot_result
@@ -35,8 +35,8 @@ class InventoryEvaluator:
         if equip_action:
             options.append((equip_action, WEIGHT_GOAL_LOOT + BONUS_WEIGHT_EQUIP))
 
-        # 3. Evaluasi Consumable (Memanggil metode yang benar: evaluate)
-        consumable_action = self.consumable_strategy.evaluate(state)
+        # 3. Evaluasi Consumable (Menggunakan metode yang benar: evaluate_healing)
+        consumable_action = self.consumable_strategy.evaluate_healing(state)
         if consumable_action:
             options.append((consumable_action, WEIGHT_GOAL_LOOT + BONUS_WEIGHT_CONSUMABLE))
 
