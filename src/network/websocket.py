@@ -37,6 +37,7 @@ class ClawRoyaleWSClient:
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.is_running = False
         self.reconnect_attempts = 0
+        self._dead_flag_logged = False  # Mencegah spam log saat agen mati
 
     async def connect_and_loop(self):
         self.is_running = True
@@ -71,6 +72,7 @@ class ClawRoyaleWSClient:
                 ) as websocket:
                     self.websocket = websocket
                     self.reconnect_attempts = 0
+                    self._dead_flag_logged = False # Reset flag mati setiap koneksi baru
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
                     ping_task = asyncio.create_task(self._send_ping_loop())
@@ -116,21 +118,25 @@ class ClawRoyaleWSClient:
         if is_game_state:
             state = GameState(payload)
             
-            # --- PENANGANAN AGEN GUGUR (RE-QUEUE CEPAT) ---
+            # --- PENANGANAN AGEN GUGUR (MATCH LOCK SYSTEM) ---
             if not state.is_player_alive:
-                # 1. Bersihkan sisa antrean aksi agar tidak terbawa ke game selanjutnya
                 self.brain.planner.clear(reason="Agent Gugur (HP 0)")
                 
-                # 2. Cetak log GUI terakhir yang menunjukkan status DEAD
-                try:
-                    GUILogger.log_turn(state, None, getattr(self, 'can_act', True))
-                except Exception as e:
-                    logger.error(f"[GUI ERROR] Terjadi kerusakan pada src/network/gui_logger.py:\n{traceback.format_exc()}")
+                # Hanya cetak log GUI GUI satu kali (atau saat frame berubah) agar tidak spam
+                if not getattr(self, '_last_turn_dead', None) == state.turn:
+                    try:
+                        GUILogger.log_turn(state, None, getattr(self, 'can_act', True))
+                    except Exception as e:
+                        logger.error(f"[GUI ERROR] Terjadi kerusakan pada gui_logger:\n{traceback.format_exc()}")
+                    self._last_turn_dead = state.turn
                 
-                # 3. Tutup soket aktif secara teratur untuk memaksa sistem keluar dari game saat ini
-                logger.info("[WS] Agen terdeteksi GUGUR. Menutup soket untuk otomatis mengantre ke room baru...")
-                if self.websocket and not is_ws_closed(self.websocket):
-                    asyncio.create_task(self.websocket.close())
+                # Beri notifikasi Standby hanya satu kali
+                if not self._dead_flag_logged:
+                    logger.info("[WS] Agen GUGUR. Standby di dalam room menunggu server menyelesaikan Match ini...")
+                    self._dead_flag_logged = True
+                
+                # KUNCI: Jangan putuskan koneksi (`websocket.close()`). 
+                # Biarkan terbuka tanpa mengirim aksi hingga server mengakhiri game secara alami.
                 return
             # ----------------------------------------------
             
@@ -174,7 +180,7 @@ class ClawRoyaleWSClient:
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
             elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
-                logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
+                logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
             return
 
         elif frame_type == "action_result":
