@@ -97,7 +97,6 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        # Deteksi Game State Utama secara presisi berdasarkan keberadaan kunci 'self' di dalam payload
         is_game_state = False
         if isinstance(payload, dict):
             if "self" in payload:
@@ -136,11 +135,11 @@ class ClawRoyaleWSClient:
             
             welcome_lower = welcome_msg.lower()
             if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
-                # [REVISI HANDSHAKE]: Menggunakan camelCase 'entryType' sesuai pembaruan skema server terbaru
+                # [REVISI HANDSHAKE MURNI]: Gunakan skema Flat JSON persis seperti spesifikasi lobi API server
+                # 'type' dan 'entryType' berada pada posisi root sejajar
                 join_payload = {
                     "type": "entryType",
-                    "data": "free",
-                    "entryType": "free" # Fallback inject root-level
+                    "entryType": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
