@@ -19,7 +19,6 @@ class GoalSelector:
         visible_enemies = state.visible_enemies
         current_region = state.current_region
         
-        # [REVISI]: Hanya hitung musuh hidup di region yang sama
         enemies_same_region = sum(1 for e in visible_enemies if e.region_id == current_region.id and e.is_alive)
         hp_ratio = player.hp / player.max_hp
 
@@ -93,8 +92,16 @@ class GoalSelector:
                     new_utility -= 80.0
 
             elif mode == "COMBAT":
-                if act_type == "attack":
-                    new_utility += 80.0
+                # [REVISI]: Cek musuh hidup murni di region lokal saat ini
+                enemies_same_region = sum(1 for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive)
+                
+                if enemies_same_region == 0:
+                    # Jika area lokal aman (musuh mati/kabur), beri bonus tinggi untuk memungut koin/sMoltz/jarahan sisa
+                    if act_type == "pickup":
+                        new_utility += 180.0
+                else:
+                    if act_type == "attack":
+                        new_utility += 80.0
 
             adjusted.append((action, max(0.1, new_utility)))
 
