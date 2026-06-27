@@ -41,46 +41,61 @@ class LootStrategy:
             score = 0.0
             
             if isinstance(item, Weapon):
+                # [REVISI AMAN]: Anti-Duplikat Cerdas. Hanya abaikan jika kita sudah punya senjata dengan NAMA yang sama dan TIER setara/lebih tinggi
                 current_weapon = player.equipped_weapon
                 weapons_in_bag = [i for i in player.inventory if isinstance(i, Weapon)]
                 
-                max_owned_weapon_tier = -1
-                if current_weapon:
-                    max_owned_weapon_tier = max(max_owned_weapon_tier, current_weapon.tier)
-                for w in weapons_in_bag:
-                    max_owned_weapon_tier = max(max_owned_weapon_tier, w.tier)
+                has_better_or_equal_same_weapon = False
                 
-                if item.tier <= max_owned_weapon_tier:
+                if current_weapon and current_weapon.name.lower() == item.name.lower() and current_weapon.tier >= item.tier:
+                    has_better_or_equal_same_weapon = True
+                    
+                for w in weapons_in_bag:
+                    if w.name.lower() == item.name.lower() and w.tier >= item.tier:
+                        has_better_or_equal_same_weapon = True
+                        break
+                
+                if has_better_or_equal_same_weapon:
                     continue
 
                 if player.equipped_weapon is None:
+                    # Senjata saat unarmed (Prioritas Teratas: Rank 1)
                     score = 100.0 + (item.tier * 20.0)
                 else:
-                    score = 20.0 + (item.tier * 10.0)
+                    # Senjata baru / tipe lain untuk opsi taktis (Prioritas Tinggi: Rank 2)
+                    score = 85.0 + (item.tier * 10.0)
                     
             elif isinstance(item, Armor):
+                # [REVISI AMAN]: Anti-Duplikat Cerdas untuk baju zirah
                 current_armor = player.equipped_armor
                 armors_in_bag = [i for i in player.inventory if isinstance(i, Armor)]
                 
-                max_owned_armor_tier = -1
-                if current_armor:
-                    max_owned_armor_tier = max(max_owned_armor_tier, current_armor.tier)
-                for a in armors_in_bag:
-                    max_owned_armor_tier = max(max_owned_armor_tier, a.tier)
+                has_better_or_equal_same_armor = False
                 
-                if item.tier <= max_owned_armor_tier:
+                if current_armor and current_armor.name.lower() == item.name.lower() and current_armor.tier >= item.tier:
+                    has_better_or_equal_same_armor = True
+                    
+                for a in armors_in_bag:
+                    if a.name.lower() == item.name.lower() and a.tier >= item.tier:
+                        has_better_or_equal_same_armor = True
+                        break
+                        
+                if has_better_or_equal_same_armor:
                     continue
 
                 if player.equipped_armor is None:
-                    score = 90.0 + (item.tier * 20.0)
+                    # Zirah saat telanjang dada (Prioritas Menengah-Tinggi: Rank 3)
+                    score = 70.0 + (item.tier * 20.0)
                 else:
+                    # Zirah upgrade
                     score = 15.0 + (item.tier * 10.0)
                     
             elif isinstance(item, Potion):
+                # Ramuan HP/EP (Prioritas Bawah: Rank 5)
                 score = 50.0 + (item.tier * 10.0)
                 
             elif "smoltz" in item.name.lower():
-                # [REVISI AUDIT]: sMoltz adalah koin mata uang progres berharga tinggi. Beri prioritas 60.0
+                # Koin mata uang taktis (Prioritas Menengah: Rank 4)
                 score = 60.0
 
             else:
