@@ -1,7 +1,8 @@
 """
 src/ai/survival/danger_calculator.py
 Tanggung jawab: Menghitung Indeks Bahaya (Danger Score) terstandarisasi (0.0 - 100.0)
- berdasarkan HP, sisa EP, Badai, dan intensitas ancaman musuh sekitar.
+ berdasarkan HP, sisa EP, Badai, intensitas ancaman musuh sekitar, 
+ serta melakukan adaptasi taktis terhadap tingkat jarak pandang cuaca (Vision FoV).
 """
 
 import logging
@@ -52,7 +53,7 @@ class DangerCalculator:
         elif is_pending:
             storm_risk = 50.0 * WEIGHT_DANGER_STORM
 
-        # [REVISI JANGKAUAN]: Hanya hitung musuh hidup di region kita (Layer 0) atau tetangga (Layer 1)
+        # Hanya hitung musuh hidup di region kita (Layer 0) atau tetangga (Layer 1)
         close_enemies = [
             e for e in visible_enemies 
             if (e.region_id == current_region.id or e.region_id in current_region.connections) and e.is_alive
@@ -64,12 +65,29 @@ class DangerCalculator:
             enemy_ratio = min(1.0, enemy_count / 3.0)
             enemy_risk = enemy_ratio * 100.0 * WEIGHT_DANGER_ENEMY
 
-        danger_score = hp_risk + ep_risk + storm_risk + enemy_risk
+        # [REVISI ADAPTASI CUACA]: Baca status Vision FoV dari server payload
+        # Jika cuaca buruk atau malam hari (Vision <= 0), tingkatkan risiko bahaya dasar sebesar +15.0
+        # karena risiko terkena jebakan ambush musuh sangat tinggi akibat sempitnya jarak pandang.
+        vision_fov = state.data_payload.get("vision", 1)
+        weather_risk = 0.0
+        if safe_int(vision_fov, 1) <= 0:
+            weather_risk = 15.0
+            logger.debug(f"[DANGER CALC] Menambahkan risiko cuaca/malam (+15.0) karena jarak pandang sempit (Vision FoV: {vision_fov}).")
+
+        danger_score = hp_risk + ep_risk + storm_risk + enemy_risk + weather_risk
         danger_score = max(0.0, min(100.0, danger_score))
 
         logger.debug(
             f"[DANGER CALC] Danger Score: {danger_score:.1f} | "
             f"RiskBreakdown -> HP:{hp_risk:.1f}, EP:{ep_risk:.1f}, "
-            f"Storm:{storm_risk:.1f}, Enemy:{enemy_risk:.1f} (Close Enemies: {enemy_count})"
+            f"Storm:{storm_risk:.1f}, Enemy:{enemy_risk:.1f}, Weather:{weather_risk:.1f}"
         )
         return danger_score
+
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default

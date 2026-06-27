@@ -37,9 +37,10 @@ class MovementEvaluator:
                 ))
                 return candidates
 
-        # Deteksi musuh di region saat ini
+        # Deteksi musuh hidup di region saat ini
         enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
 
+        # Pengejaran Cerdas (Chase Hunt) di wilayah tetangga
         if player.equipped_weapon and player.hp > 40 and player.ep > 3 and len(enemies_in_same_region) == 0:
             for enemy in state.visible_enemies:
                 if enemy.region_id in connections and enemy.is_alive:
