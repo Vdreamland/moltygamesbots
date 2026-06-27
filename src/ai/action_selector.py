@@ -49,9 +49,16 @@ class ActionSelector:
         return RestAction(thought="Menjalankan rest pengaman karena kekurangan EP untuk aksi taktis lainnya.")
 
     def _has_sufficient_ep(self, action: Action, current_ep: int, state: GameState) -> bool:
-        """Memeriksa sisa EP agen terhadap konsumsi EP aksi"""
         act_type = action.action_type
         
+        # [REVISI EP BUFFER]: Cegah pergerakan dan eksplorasi tidak darurat jika EP kritis (EP <= 2) saat aman.
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
+        is_emergency = (len(enemies_in_same_region) > 0 or state.current_region.is_death_zone)
+        
+        if not is_emergency and act_type in ["move", "explore"] and current_ep <= 2:
+            logger.debug(f"[SELECTOR] Memblokir aksi non-darurat {act_type} untuk mengamankan cadangan EP (EP: {current_ep}).")
+            return False
+
         if act_type == "move":
             target_region_id = action.data.get("regionId")
             

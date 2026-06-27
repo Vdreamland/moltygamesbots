@@ -1,10 +1,10 @@
 """
 src/ai/survival/survival_evaluator.py
 Tanggung jawab: Agregator utilitas kelangsungan hidup final.
-               Mengevaluasi indeks bahaya dan menyisipkan aksi darurat seperti:
-               - Storm Evacuation (Evakuasi Badai)
-               - Heal Move (Mengungsi demi healing aman)
-               - Smart REST (Istirahat preventif di posisi aman saat EP <= 4)
+ Mengevaluasi indeks bahaya dan menyisipkan aksi darurat seperti:
+ - Storm Evacuation (Evakuasi Badai)
+ - Heal Move (Mengungsi demi healing aman)
+ - Smart REST (Istirahat preventif di posisi aman saat EP <= 4)
 """
 
 import logging
@@ -24,9 +24,6 @@ class SurvivalEvaluator:
         pass
 
     def evaluate(self, state: GameState, memory: WorldModel) -> List[Tuple[Action, float]]:
-        """
-        Menilai kondisi ketahanan fisik agen dan mengembalikan opsi aksi kelangsungan hidup.
-        """
         candidates: List[Tuple[Action, float]] = []
         player = state.player
 
@@ -46,12 +43,11 @@ class SurvivalEvaluator:
             candidates.append((heal_move_action, WEIGHT_GOAL_EMERGENCY - 50.0))
             logger.info("[SURVIVAL EVAL] Menyisipkan opsi HEAL RETREAT (Jalur pelarian khusus healing).")
 
-        # ==========================================================================
+        # [REVISI]: Evaluasi musuh di region yang sama agar Smart REST dapat diaktifkan meski ada musuh di luar area
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
+
         # 4. SMART REST (Pengecasan Energi Preventif):
-        # Jika EP turun hingga <= 4 (EP <= 4) dan lingkungan sekeliling 100% sepi/aman,
-        # prioritaskan REST taktis untuk mengisi ulang baterai energi sebelum masuk ke zona bahaya baru.
-        # ==========================================================================
-        if player.ep <= 4 and danger_score < 20.0 and len(state.visible_enemies) == 0:
+        if player.ep <= 4 and danger_score < 20.0 and len(enemies_in_same_region) == 0:
             candidates.append((
                 RestAction(
                     thought="Mengisi ulang energi (recharge) di lokasi yang aman sebelum melanjutkan perjalanan."

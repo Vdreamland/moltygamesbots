@@ -1,8 +1,8 @@
 """
 src/ai/inventory/consumable_strategy.py
 Tanggung jawab: Mengevaluasi kapan harus meminum ramuan pemulih (Potion HP / Potion EP).
-               Menegakkan Heal Rule: "Jangan heal di depan musuh".
-               Aksi use_item memakan 0 EP tetapi memicu 30s Cooldown.
+ Menegakkan Heal Rule: "Jangan heal di depan musuh".
+ Aksi use_item memakan 0 EP tetapi memicu 30s Cooldown.
 """
 
 import logging
@@ -16,26 +16,19 @@ logger = logging.getLogger("ClawRoyale.ConsumableStrategy")
 class ConsumableStrategy:
     @staticmethod
     def evaluate_healing(state: GameState) -> Optional[UseItemAction]:
-        """
-        Mengevaluasi penggunaan ramuan HP atau EP dari inventaris.
-        Kondisi penggunaan:
-        - HP <= 75% untuk Potion HP.
-        - EP <= 3 untuk Potion EP.
-        - Wajib Aman: Tidak ada musuh yang terlihat di region saat ini.
-        """
         player = state.player
         inventory = player.inventory
         visible_enemies = state.visible_enemies
 
-        # Penegakan Heal Rule: Jangan heal di depan musuh
-        if len(visible_enemies) > 0:
-            logger.debug("[CONSUMABLE] Ditunda: Terdeteksi musuh di dekat kita. Terlalu berbahaya untuk healing.")
+        # [REVISI]: Hanya memblokir heal jika ada musuh aktif di region yang sama
+        enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id]
+        if len(enemies_in_same_region) > 0:
+            logger.debug("[CONSUMABLE] Ditunda: Ada musuh di ruangan yang sama. Menunda penyembuhan.")
             return None
 
         hp_potion: Optional[Potion] = None
         ep_potion: Optional[Potion] = None
 
-        # Sortir ketersediaan potion di dalam tas
         for item in inventory:
             if isinstance(item, Potion):
                 if item.recovery_type == "hp":
