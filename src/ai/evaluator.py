@@ -2,7 +2,6 @@
 src/ai/evaluator.py
 Tanggung jawab: Menggabungkan seluruh utilitas taktis, melakukan normalisasi skor, 
 dan meranking opsi aksi berdasarkan skor utilitas terbesar.
-Menangani pemisahan antara aksi instan (Cooldown-free) dan aksi berbasis cooldown.
 """
 
 import logging
@@ -21,25 +20,22 @@ class Evaluator:
         self.survival_evaluator = None
 
     def inject_sub_evaluators(self, combat, movement, inventory, survival):
-        """Menghubungkan instansi sub-evaluator taktis ke evaluator utama"""
         self.combat_evaluator = combat
         self.movement_evaluator = movement
         self.inventory_evaluator = inventory
         self.survival_evaluator = survival
 
     def evaluate_all_options(self, state: GameState, memory: WorldModel) -> List[Tuple[Action, float]]:
-        """
-        Mengevaluasi seluruh opsi aksi potensial.
-        Memisahkan evaluasi berdasarkan state 'can_act' dari API ClawRoyale.
-        """
         options: List[Tuple[Action, float]] = []
-        can_act = state.player_can_act
+        
+        # [REVISI]: Menggunakan atribut yang benar yaitu 'can_act' sesuai model GameState
+        can_act = state.can_act
 
         # 1. Evaluasi Aksi Bertahan Hidup (Heal, Run)
         if self.survival_evaluator:
             options.extend(self.survival_evaluator.evaluate(state, memory))
 
-        # 2. Evaluasi Aksi Strategis (Attack, Move, Loot) 
+        # 2. Evaluasi Aksi Strategis (Attack, Move, Loot)
         # Hanya dievaluasi jika bot dalam status can_act = True
         if can_act:
             if self.combat_evaluator:
@@ -53,12 +49,10 @@ class Evaluator:
         else:
             logger.debug("[EVALUATOR] Bot dalam cooldown, hanya memproses survival actions.")
 
-        # 3. Default Fallback Action: Rest jika tidak ada opsi lain yang bernilai positif
+        # 3. Default Fallback Action
         if not options:
             options.append((RestAction(thought="Tidak ada aksi tersedia, beristirahat."), 0.1))
 
-        # 4. Urutkan aksi berdasarkan skor utilitas tertinggi
         options.sort(key=lambda x: x[1], reverse=True)
         
-        logger.info(f"[EVALUATOR] Evaluasi Selesai (can_act={can_act}). Total kandidat: {len(options)}")
         return options
