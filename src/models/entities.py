@@ -1,18 +1,27 @@
 """
 src/models/entities.py
 Tanggung jawab: Representasi entitas game (Player, Enemy, Region, Item, Weapon, Potion, Armor, Ruin)
-               dan parser data tangguh yang memisahkan pembacaan Type Luar dan Nama Dalam Bersarang
-               serta melakukan parsing data taktis DEF (Defense), KILLS, Weapon, dan Armor (Pylance Compliant).
+dan parser data tangguh yang memisahkan pembacaan Type Luar dan Nama Dalam Bersarang
+serta melakukan parsing data taktis dengan Type-Safe checking.
 """
 
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 
+def safe_int(value: Any, default: int = 0) -> int:
+    """[REVISI AUDIT]: Fail-safe type checking untuk parsing data integer."""
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
 @dataclass
 class Item:
     id: str
     name: str
-    type: str  # weapon, recovery_hp, recovery_ep, relic, utility, armor
+    type: str # weapon, recovery_hp, recovery_ep, relic, utility, armor
     tier: int
     raw_data: Dict[str, Any] = field(default_factory=dict)
 
@@ -21,15 +30,12 @@ class Item:
         if not data:
             return cls(id="", name="Unknown Item", type="utility", tier=1)
         
-        # Objek dalam bersarang menyimpan nama
         nested_item = data.get("item")
         source_name = nested_item if isinstance(nested_item, dict) else data
         
-        # DOUBLE-LAYERED TYPE RESOLVER: Ambil type dari dua tingkat sekaligus
         outer_type = str(data.get("type", "utility")).lower()
         inner_type = str(source_name.get("type", outer_type)).lower()
         
-        # Resolusi tipe secara flat, sangat bersih, dan 100% kompatibel dengan linter
         if "weapon" in [outer_type, inner_type]:
             resolved_type = "weapon"
         elif "armor" in [outer_type, inner_type]:
@@ -45,7 +51,7 @@ class Item:
             id=data.get("id", source_name.get("id", "")),
             name=source_name.get("name", "Unknown Item"),
             type=resolved_type,
-            tier=int(source_name.get("tier", data.get("tier", 1))),
+            tier=safe_int(source_name.get("tier", data.get("tier", 1)), 1),
             raw_data=data
         )
 
@@ -63,16 +69,16 @@ class Weapon(Item):
         
         nested_item = data.get("item")
         source_name = nested_item if isinstance(nested_item, dict) else data
-        
         stats = source_name.get("stats", data.get("stats", {})) or {}
+        
         return cls(
             id=data.get("id", source_name.get("id", "")),
             name=source_name.get("name", "Fists"),
             type="weapon",
-            tier=int(source_name.get("tier", data.get("tier", 1))),
-            damage=int(stats.get("damage", data.get("damage", 5))),
-            range=int(stats.get("range", data.get("range", 1))),
-            ep_cost=int(stats.get("epCost", data.get("ep_cost", 1))),
+            tier=safe_int(source_name.get("tier", data.get("tier", 1)), 1),
+            damage=safe_int(stats.get("damage", data.get("damage", 5)), 5),
+            range=safe_int(stats.get("range", data.get("range", 1)), 1),
+            ep_cost=safe_int(stats.get("epCost", data.get("ep_cost", 1)), 1),
             raw_data=data
         )
 
@@ -88,22 +94,21 @@ class Armor(Item):
         
         nested_item = data.get("item")
         source_name = nested_item if isinstance(nested_item, dict) else data
-        
         stats = source_name.get("stats", data.get("stats", {})) or {}
+        
         return cls(
             id=data.get("id", source_name.get("id", "")),
             name=source_name.get("name", "Armor"),
             type="armor",
-            tier=int(source_name.get("tier", data.get("tier", 1))),
-            # Ekstrak nilai pertahanan absolut (defense)
-            defense=int(stats.get("defense", source_name.get("defense", 5))),
+            tier=safe_int(source_name.get("tier", data.get("tier", 1)), 1),
+            defense=safe_int(stats.get("defense", source_name.get("defense", 5)), 5),
             raw_data=data
         )
 
 
 @dataclass
 class Potion(Item):
-    recovery_type: str = "hp"  # hp atau ep
+    recovery_type: str = "hp"
     recovery_amount: int = 0
 
     @classmethod
@@ -113,23 +118,20 @@ class Potion(Item):
         
         nested_item = data.get("item")
         source_name = nested_item if isinstance(nested_item, dict) else data
-        
         stats = source_name.get("stats", {}) or {}
         iname = str(source_name.get("name", "")).lower()
         
-        # Deteksi tipe pemulihan dinamis berdasarkan nama barang
         is_ep = any(keyword in iname for keyword in ["food", "smoltz", "snack", "energy", "candy", "soda", "potion_ep"])
         rec_type = "ep" if is_ep else "hp"
         
-        # Set besar pemulihan default jika parameter stats dari server kosong
         default_amount = 30 if "bandage" in iname else (50 if "medkit" in iname else 30)
-        amount = int(stats.get("recoveryAmount", source_name.get("recovery_amount", default_amount)))
+        amount = safe_int(stats.get("recoveryAmount", source_name.get("recovery_amount", default_amount)), default_amount)
         
         return cls(
             id=data.get("id", source_name.get("id", "")),
             name=source_name.get("name", "Potion"),
             type=str(data.get("type", "recovery_hp")).lower(),
-            tier=int(source_name.get("tier", data.get("tier", 1))),
+            tier=safe_int(source_name.get("tier", data.get("tier", 1)), 1),
             recovery_type=rec_type,
             recovery_amount=amount,
             raw_data=data
@@ -151,8 +153,8 @@ class Ruin:
         return cls(
             ruin_id=data.get("ruinId", data.get("id", "")),
             is_empty=bool(data.get("isEmpty", True)),
-            gauge=int(data.get("gauge", 0)),
-            max_gauge=int(data.get("maxGauge", 100)),
+            gauge=safe_int(data.get("gauge", 0)),
+            max_gauge=safe_int(data.get("maxGauge", 100), 100),
             content_type=data.get("contentType", "none")
         )
 
@@ -175,15 +177,12 @@ class Region:
         raw_items = data.get("items", []) or []
         parsed_items = []
         for item_data in raw_items:
-            # Ambil data bersarang untuk barang di tanah
             nested_item = item_data.get("item")
             source_name = nested_item if isinstance(nested_item, dict) else item_data
             
-            # DOUBLE-LAYERED TYPE RESOLVER (Untuk deteksi barang di tanah)
             outer_type = str(item_data.get("type", "")).lower()
             inner_type = str(source_name.get("type", outer_type)).lower() if isinstance(nested_item, dict) else outer_type
             
-            # Resolusi tipe secara flat, sangat bersih, dan 100% kompatibel dengan linter
             if "weapon" in [outer_type, inner_type]:
                 itype = "weapon"
             elif "armor" in [outer_type, inner_type]:
@@ -197,7 +196,6 @@ class Region:
             
             iname = str(source_name.get("name", "")).lower()
             
-            # NAME-BASED FAIL-SAFE (DETEKSI CADANGAN)
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp"])
@@ -220,7 +218,7 @@ class Region:
             is_death_zone=bool(data.get("isDeathZone", False)),
             connections=data.get("connections", []) or [],
             items=parsed_items,
-            ruin_gauge=int(data.get("ruinGauge", 0)),
+            ruin_gauge=safe_int(data.get("ruinGauge", 0)),
             ruin_occupant=data.get("ruinOccupant")
         )
 
@@ -236,12 +234,12 @@ class Agent:
     alert_gauge: int
     alert_active: bool
     equipped_weapon: Optional[Weapon] = None
-    equipped_armor: Optional[Armor] = None  # Parse data zirah terpasang
+    equipped_armor: Optional[Armor] = None
     inventory: List[Item] = field(default_factory=list)
     is_alive: bool = True
     region_id: str = ""
-    kills: int = 0         
-    defense: int = 0       
+    kills: int = 0 
+    defense: int = 0 
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Agent":
@@ -251,7 +249,6 @@ class Agent:
         raw_weapon = data.get("equippedWeapon")
         parsed_weapon = Weapon.from_dict(raw_weapon) if raw_weapon else None
 
-        # Ambil Baju Zirah yang terpasang dari server
         raw_armor = data.get("equippedArmor")
         parsed_armor = Armor.from_dict(raw_armor) if raw_armor else None
 
@@ -261,11 +258,9 @@ class Agent:
             nested_item = item_data.get("item")
             source_name = nested_item if isinstance(nested_item, dict) else item_data
             
-            # SINKRONISASI BERSARANG TAS PRESISI: Memisahkan Type Luar & Nama Dalam
-            outer_type = str(item_data.get("type", "")).lower()   # BACA TIPE DARI ELEMEN LUAR
+            outer_type = str(item_data.get("type", "")).lower()
             inner_type = str(source_name.get("type", outer_type)).lower() if isinstance(nested_item, dict) else outer_type
             
-            # Resolusi tipe secara flat, sangat bersih, dan 100% kompatibel dengan linter
             if "weapon" in [outer_type, inner_type]:
                 itype = "weapon"
             elif "armor" in [outer_type, inner_type]:
@@ -277,9 +272,8 @@ class Agent:
             else:
                 itype = outer_type
             
-            iname = str(source_name.get("name", "")).lower()  # BACA NAMA DARI ELEMEN DALAM
+            iname = str(source_name.get("name", "")).lower()
             
-            # NAME-BASED FAIL-SAFE (DETEKSI CADANGAN)
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp"])
@@ -299,17 +293,17 @@ class Agent:
         return cls(
             id=data.get("id", ""),
             name=data.get("name", "Agent"),
-            hp=int(data.get("hp", 0)),
-            max_hp=int(data.get("maxHp", 100)),
-            ep=int(data.get("ep", 0)),
-            max_ep=int(data.get("maxEp", 100)),
-            alert_gauge=int(data.get("alertGauge", 0)),
+            hp=safe_int(data.get("hp", 0)),
+            max_hp=safe_int(data.get("maxHp", 100), 100),
+            ep=safe_int(data.get("ep", 0)),
+            max_ep=safe_int(data.get("maxEp", 100), 100),
+            alert_gauge=safe_int(data.get("alertGauge", 0)),
             alert_active=bool(data.get("alertActive", False)),
             equipped_weapon=parsed_weapon,
-            equipped_armor=parsed_armor,  # Parse data zirah terpasang
+            equipped_armor=parsed_armor,
             inventory=parsed_inventory,
             is_alive=bool(data.get("isAlive", True)),
             region_id=data.get("regionId", ""),
-            kills=int(data.get("kills", 0)),         
-            defense=int(data.get("defense", data.get("def", 0))) 
+            kills=safe_int(data.get("kills", 0)),
+            defense=safe_int(data.get("defense", 0))
         )

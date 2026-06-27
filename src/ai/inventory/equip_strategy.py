@@ -1,18 +1,25 @@
 """
 src/ai/inventory/equip_strategy.py
 Tanggung jawab: Mengotomatiskan pemasangan (equip) senjata DAN baju zirah terbaik dari tas.
-               Dilengkapi fitur Fail-Safe Dynamic Upcaster untuk menjamin senjata & zirah
-               capital-mismatch dari server tetap terpasang instan ke slotnya masing-masing.
+Dilengkapi fitur Fail-Safe Dynamic Upcaster dan pemilihan prioritas rasional berdasarkan Gain terbesar.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Any
 from src.models.game_state import GameState
 from src.models.entities import Weapon, Armor
 from src.models.action import EquipAction
 from src.ai.inventory.weapon_strategy import WeaponStrategy
 
 logger = logging.getLogger("ClawRoyale.EquipStrategy")
+
+def _safe_int(val: Any, default: int) -> int:
+    """Helper fail-safe untuk menangani JSON value yang kotor / bukan angka."""
+    try:
+        if val is None: return default
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
 
 class EquipStrategy:
     @staticmethod
@@ -27,15 +34,16 @@ class EquipStrategy:
     def evaluate_auto_equip(state: GameState) -> Optional[EquipAction]:
         inventory = state.player.inventory
         
-        # 1. EVALUASI AUTO-EQUIP SENJATA
+        # 1. PERSIAPAN SKOR TERPASANG SAAT INI
         current_weapon = state.player.equipped_weapon
+        current_weapon_score = WeaponStrategy.calculate_weapon_score(current_weapon)
+        best_weapon_score = current_weapon_score
         best_weapon_in_bag: Optional[Weapon] = None
-        best_weapon_score = WeaponStrategy.calculate_weapon_score(current_weapon)
         
-        # 2. EVALUASI AUTO-EQUIP ZIRAH (ARMOR)
         current_armor = state.player.equipped_armor
+        current_armor_score = EquipStrategy.calculate_armor_score(current_armor)
+        best_armor_score = current_armor_score
         best_armor_in_bag: Optional[Armor] = None
-        best_armor_score = EquipStrategy.calculate_armor_score(current_armor)
 
         # Cari barang penunjang terkuat di dalam tas
         for item in inventory:
@@ -50,9 +58,9 @@ class EquipStrategy:
                         name=item.name,
                         type="weapon",
                         tier=item.tier,
-                        damage=int(stats.get("damage", item.raw_data.get("damage", 15))),
-                        range=int(stats.get("range", item.raw_data.get("range", 1))),
-                        ep_cost=int(stats.get("epCost", item.raw_data.get("ep_cost", 1))),
+                        damage=_safe_int(stats.get("damage", item.raw_data.get("damage", 15)), 15),
+                        range=_safe_int(stats.get("range", item.raw_data.get("range", 1)), 1),
+                        ep_cost=_safe_int(stats.get("epCost", item.raw_data.get("ep_cost", 1)), 1),
                         raw_data=item.raw_data
                     )
                 
@@ -72,7 +80,7 @@ class EquipStrategy:
                         name=item.name,
                         type="armor",
                         tier=item.tier,
-                        defense=int(stats.get("defense", item.raw_data.get("defense", 5))),
+                        defense=_safe_int(stats.get("defense", item.raw_data.get("defense", 5)), 5),
                         raw_data=item.raw_data
                     )
                 
@@ -81,22 +89,30 @@ class EquipStrategy:
                     best_armor_score = score
                     best_armor_in_bag = armor_item
 
-        # Prioritas Utama: Pasang senjata terkuat terlebih dahulu untuk meningkatkan daya serang
-        if best_weapon_in_bag:
+        # [REVISI AUDIT]: Jangan paksakan return weapon di awal! 
+        # Bandingkan mana upgrade (Gain) yang dampaknya lebih besar.
+        weapon_gain = best_weapon_score - current_weapon_score if best_weapon_in_bag else 0.0
+        armor_gain = best_armor_score - current_armor_score if best_armor_in_bag else 0.0
+
+        if best_weapon_in_bag and best_armor_in_bag:
+            # Jika ada dua upgrade sekaligus di satu turn, pilih yang efek utilitasnya paling tinggi
+            if weapon_gain >= armor_gain:
+                curr_name = current_weapon.name if current_weapon else "None"
+                logger.info(f"[EQUIP] Otomatis memasang senjata: {best_weapon_in_bag.name} menggantikan {curr_name} (Gain: +{weapon_gain:.1f}).")
+                return EquipAction(item_id=best_weapon_in_bag.id, thought=f"Otomatis memakai senjata terkuat di dalam tas ({best_weapon_in_bag.name}).")
+            else:
+                curr_name = current_armor.name if current_armor else "None"
+                logger.info(f"[EQUIP] Otomatis memasang zirah: {best_armor_in_bag.name} menggantikan {curr_name} (Gain: +{armor_gain:.1f}).")
+                return EquipAction(item_id=best_armor_in_bag.id, thought=f"Otomatis memakai zirah terkuat di dalam tas ({best_armor_in_bag.name}).")
+        
+        elif best_weapon_in_bag:
             curr_name = current_weapon.name if current_weapon else "None"
             logger.info(f"[EQUIP] Otomatis memasang senjata: {best_weapon_in_bag.name} menggantikan {curr_name}.")
-            return EquipAction(
-                item_id=best_weapon_in_bag.id,
-                thought=f"Otomatis memakai senjata terkuat di dalam tas ({best_weapon_in_bag.name}) untuk meningkatkan DPS."
-            )
-            
-        # Prioritas Kedua: Pasang zirah tertangguh untuk meningkatkan daya tahan DEF
-        if best_armor_in_bag:
+            return EquipAction(item_id=best_weapon_in_bag.id, thought=f"Otomatis memakai senjata terkuat di dalam tas ({best_weapon_in_bag.name}).")
+        
+        elif best_armor_in_bag:
             curr_name = current_armor.name if current_armor else "None"
             logger.info(f"[EQUIP] Otomatis memasang zirah: {best_armor_in_bag.name} menggantikan {curr_name}.")
-            return EquipAction(
-                item_id=best_armor_in_bag.id,
-                thought=f"Otomatis memakai zirah terkuat di dalam tas ({best_armor_in_bag.name}) untuk mereduksi damage musuh."
-            )
+            return EquipAction(item_id=best_armor_in_bag.id, thought=f"Otomatis memakai zirah terkuat di dalam tas ({best_armor_in_bag.name}).")
 
         return None
