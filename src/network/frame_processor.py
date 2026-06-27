@@ -155,23 +155,30 @@ class FrameProcessor:
             return
 
         elif frame_type == "welcome":
-            welcome_msg = ""
-            data_val = payload.get("data")
-            if isinstance(data_val, str):
-                welcome_msg = data_val
-            elif isinstance(data_val, dict):
-                welcome_msg = data_val.get("entryType", "")
-            else:
-                welcome_msg = payload.get("message", "")
-
+            # Ekstrak pesan welcome
+            welcome_msg = payload.get("message", "")
+            if not welcome_msg:
+                data_val = payload.get("data")
+                if isinstance(data_val, str):
+                    welcome_msg = data_val
+                elif isinstance(data_val, dict):
+                    welcome_msg = data_val.get("entryType", "")
+            
             decision = payload.get("decision", "")
             logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            welcome_lower = welcome_msg.lower()
-            decision_lower = decision.lower()
+            welcome_lower = str(welcome_msg).lower()
+            decision_lower = str(decision).lower()
             
-            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower or decision_lower == "ask_entry_type":
+            # Jika terdeteksi game aktif, cukup re-sync (tidak perlu hello)
+            if "active game found" in welcome_lower or "already" in welcome_lower or decision_lower == "already_in_game":
+                logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
+            else:
+                # Untuk welcome lainnya, kirim hello frame untuk masuk antrean matchmaking
                 join_payload = {
                     "type": "hello",
                     "entryType": "free"
                 }
+                await self.client.websocket.send(json.dumps(join_payload))
+                logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
+            return
