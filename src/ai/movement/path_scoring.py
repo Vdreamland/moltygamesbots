@@ -21,14 +21,12 @@ class PathScoring:
         score = 0.0
         current_turn = state.turn
 
-        # [BARU - DETEKSI BADAI AKTIF]: Cek apakah wilayah tujuan sudah resmi aktif ditelan badai (Death Zone)
-        is_active_death_zone = False
-        if region_id in state.regions:
-            is_active_death_zone = state.regions[region_id].is_death_zone
+        # [PERBAIKAN]: Karena GameState tidak memiliki atribut global 'regions', kita deteksi secara fail-safe
+        # menggunakan data pending_deathzones dari server dan memori historis WorldModel.
+        is_water_or_storm = region_id in state.pending_deathzones or memory.is_known_death_zone(region_id) or region_id.lower().startswith("water")
 
-        # [PERBAIKAN]: Berikan penalti mutlak murni jika region pending, sudah aktif badai, atau diingat di memori badai
-        if region_id in state.pending_deathzones or is_active_death_zone or memory.is_known_death_zone(region_id):
-            score -= 2000.0
+        if is_water_or_storm:
+            score -= 2000.0 # Penalti mutlak murni agar bot tidak pernah melangkah ke sana
 
         active_enemies_in_target = sum(1 for e in state.visible_enemies if e.region_id == region_id and e.is_alive)
         if active_enemies_in_target > 0:
@@ -86,8 +84,7 @@ class PathScoring:
         explore_score = ExplorationStrategy.calculate_exploration_score(region_id, memory, current_turn)
         score += explore_score + ruin_bonus + loot_weapon_bonus
 
-        # [PERBAIKAN]: Sinkronisasi filter air & badai aktif untuk penalti ep cost melangkah
-        is_water_or_storm = region_id in state.pending_deathzones or is_active_death_zone or memory.is_known_death_zone(region_id) or region_id.lower().startswith("water")
+        # Tambahkan penalti kecil EP Cost untuk wilayah perairan/badai agar tidak boros energi
         if is_water_or_storm:
             score -= 40.0
 

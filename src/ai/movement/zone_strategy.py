@@ -1,51 +1,38 @@
 """
 src/ai/movement/zone_strategy.py
-Tanggung jawab: Mengelola navigasi taktis terhadap Storm/Death Zone dan Pending Zone.
-               Memastikan agen mendeteksi bahaya badai dan mengarahkan evakuasi ke Safe Zone.
+Tanggung jawab: Mengelola klasifikasi zona wilayah (Safe Zone, Pending Death Zone, Active Storm)
+               dan mengidentifikasi wilayah pelarian darurat dari badai.
 """
 
-import logging
-from typing import List, Optional
+from typing import List
 from src.models.game_state import GameState
-
-logger = logging.getLogger("ClawRoyale.ZoneStrategy")
 
 class ZoneStrategy:
     @staticmethod
-    def get_storm_escape_regions(state: GameState) -> List[str]:
-        """
-        Mencari koneksi region tetangga yang bebas dari Badai Aktif dan Pending Death Zone.
-        """
-        connections = state.current_region.connections
-        pending_dz = state.pending_deathzones
-        
-        safe_regions: List[str] = []
-        pending_safe_regions: List[str] = []
-
-        for r_id in connections:
-            # Saring wilayah yang bukan badai aktif dan bukan badai penutupan berikutnya
-            is_pending = r_id in pending_dz
-            # Catatan: Kita tidak bisa tahu detail region tetangga isDeathZone kecuali dari memory
-            # atau jika kita berasumsi region yang tidak ada di list pending/active adalah aman.
-            
-            if not is_pending:
-                safe_regions.append(r_id)
-            else:
-                pending_safe_regions.append(r_id)
-
-        # Jika ada wilayah yang benar-benar bersih, prioritaskan wilayah tersebut
-        if safe_regions:
-            return safe_regions
-        
-        # Jika terpaksa, pilih wilayah pending zone daripada tetap berada di badai aktif saat ini
-        return pending_safe_regions
-
-    @staticmethod
     def is_in_danger_zone(state: GameState) -> bool:
-        """Memeriksa apakah posisi saat ini terancam oleh badai aktif atau badai penutupan berikutnya"""
-        current_region = state.current_region
-        if current_region.is_death_zone:
+        """
+        Cek apakah wilayah tempat agen berdiri saat ini berada di dalam badai (Active Storm)
+        atau merupakan wilayah pending badai yang akan meledak di turn ini.
+        """
+        region = state.current_region
+        if region.is_death_zone:
             return True
-        if current_region.id in state.pending_deathzones:
+        if region.id in state.pending_deathzones:
             return True
         return False
+
+    @staticmethod
+    def get_storm_escape_regions(state: GameState) -> List[str]:
+        """
+        Mengembalikan daftar ID wilayah tetangga yang aman (BUKAN badai aktif maupun pending).
+        """
+        connections = state.current_region.connections
+        escape_routes = []
+        for r_id in connections:
+            # [PERBAIKAN]: Hindari pemanggilan state.regions yang tidak ada di GameState.
+            # Kita andalkan state.pending_deathzones yang menampung seluruh daftar badai aktif maupun terjadwal.
+            if r_id in state.pending_deathzones:
+                continue
+                
+            escape_routes.append(r_id)
+        return escape_routes
