@@ -19,14 +19,12 @@ from src.config.constants import (
 logger = logging.getLogger("ClawRoyale.WebSocket")
 
 def is_ws_closed(ws: Any) -> bool:
-    """[REVISI COMPATIBILITY]: Cek status tutup soket yang kompatibel dengan semua versi websockets."""
+    """Cek status tutup soket yang kompatibel dengan semua versi websockets."""
     if ws is None:
         return True
-    # websockets v13+ menggunakan properti .state (Enum status)
     if hasattr(ws, "state"):
         state_str = str(ws.state).upper()
         return "CLOSED" in state_str or "CLOSING" in state_str
-    # websockets v12 ke bawah menggunakan properti .closed (Boolean)
     return getattr(ws, "closed", False)
 
 class ClawRoyaleWSClient:
@@ -68,7 +66,6 @@ class ClawRoyaleWSClient:
                     self.reconnect_attempts = 0
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
-                    # Daftarkan background task untuk Ping/Pong Keepalive
                     ping_task = asyncio.create_task(self._send_ping_loop())
                     
                     try:
@@ -128,14 +125,16 @@ class ClawRoyaleWSClient:
 
             logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            if welcome_msg == "ASK_ENTRY_TYPE":
+            # [REVISI HANDSHAKE]: Cek secara longgar jika server meminta pilihan tipe ruangan
+            welcome_lower = welcome_msg.lower()
+            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
                 join_payload = {
                     "type": "entry_type",
-                    "data": "free_room"
+                    "data": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
-                logger.info("[WS JOIN] Memasuki Antrean Matchmaking (Free Room)...")
-            elif "active game found" in welcome_msg.lower() or welcome_msg == "ALREADY_IN_GAME":
+                logger.info("[WS JOIN] Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
+            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
                 logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
             return
 
@@ -149,7 +148,6 @@ class ClawRoyaleWSClient:
             return
 
     async def send_action(self, action):
-        # [REVISI COMPATIBILITY]: Gunakan fungsi pembantu is_ws_closed untuk verifikasi status soket
         if not self.websocket or is_ws_closed(self.websocket):
             logger.error("[WS] Gagal mengirim aksi: Koneksi soket ditutup.")
             return
@@ -172,7 +170,6 @@ class ClawRoyaleWSClient:
     async def _send_ping_loop(self):
         while self.is_running:
             await asyncio.sleep(PING_INTERVAL_SECONDS)
-            # [REVISI COMPATIBILITY]: Gunakan fungsi pembantu is_ws_closed untuk verifikasi status soket
             if self.websocket and not is_ws_closed(self.websocket):
                 try:
                     await self.websocket.ping()
