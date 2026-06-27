@@ -1,7 +1,7 @@
 """
 src/models/entities.py
-Tanggung jawab: Representasi entitas game (Player, Enemy, Region, Item, Weapon, Potion, Armor, Ruin)
-dan parser data tangguh yang memisahkan pembacaan Type Luar dan Nama Dalam Bersarang
+Tanggung jawab: Kelas data taktis entitas game (Player, Enemy, Region, Item, Weapon, Potion, Armor, Ruin)
+dan parser data tangguh yang memisahkan pembacaan Type Luar dan Nama Dalam Bersesar
 serta melakukan parsing data taktis dengan Type-Safe checking.
 """
 
@@ -72,7 +72,7 @@ class Weapon(Item):
         stats = source_name.get("stats", data.get("stats", {})) or {}
         iname = str(source_name.get("name", "")).lower()
 
-        # [REVISI]: Senjata Melee (Dagger, Fists, Sword, Knife, Axe, Spear, Katana) memiliki default range = 0 (hanya region sendiri)
+        # Senjata Melee (Dagger, Fists, Sword, Knife, Axe, Spear, Katana) memiliki default range = 0 (hanya region sendiri)
         default_range = 0 if any(keyword in iname for keyword in ["dagger", "fists", "sword", "knife", "axe", "spear", "katana"]) else 1
         w_range = safe_int(stats.get("range", source_name.get("range", default_range)), default_range)
         
@@ -100,13 +100,25 @@ class Armor(Item):
         nested_item = data.get("item")
         source_name = nested_item if isinstance(nested_item, dict) else data
         stats = source_name.get("stats", data.get("stats", {})) or {}
+        iname = str(source_name.get("name", "")).lower()
+        
+        # [REVISI DEFENSE AUTO-DETECT]: Tentukan defense dasar berdasarkan nama jika stats kosong dari server
+        default_defense = 5
+        if any(keyword in iname for keyword in ["plate", "heavy", "steel", "shield"]):
+            default_defense = 8
+        elif any(keyword in iname for keyword in ["chainmail", "iron", "ringmail"]):
+            default_defense = 6
+        elif any(keyword in iname for keyword in ["leather", "light", "cloth", "vest"]):
+            default_defense = 4
+            
+        defense_val = safe_int(stats.get("defense", source_name.get("defense", default_defense)), default_defense)
         
         return cls(
             id=data.get("id", source_name.get("id", "")),
             name=source_name.get("name", "Armor"),
             type="armor",
             tier=safe_int(source_name.get("tier", data.get("tier", 1)), 1),
-            defense=safe_int(stats.get("defense", source_name.get("defense", 5)), 5),
+            defense=defense_val,
             raw_data=data
         )
 
@@ -201,7 +213,6 @@ class Region:
             
             iname = str(source_name.get("name", "")).lower()
             
-            # [REVISI]: Ditambahkan kata kunci "katana" untuk klasifikasi sebagai Weapon
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear", "katana"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
@@ -280,7 +291,6 @@ class Agent:
             
             iname = str(source_name.get("name", "")).lower()
             
-            # [REVISI]: Ditambahkan kata kunci "katana" untuk klasifikasi inventaris
             is_weapon_by_name = any(keyword in iname for keyword in ["sword", "dagger", "knife", "pistol", "rifle", "axe", "bow", "spear", "katana"])
             is_armor_by_name = any(keyword in iname for keyword in ["armor", "chainmail", "plate", "shield", "helmet", "vest"])
             is_hp_recovery = any(keyword in iname for keyword in ["bandage", "medkit", "medical", "first-aid", "potion_hp", "food"])
