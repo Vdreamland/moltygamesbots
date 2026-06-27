@@ -25,7 +25,10 @@ logger = logging.getLogger("ClawRoyale.WebSocket")
 def is_ws_closed(ws: Any) -> bool:
     if ws is None:
         return True
-    return "CLOSED" in str(getattr(ws, "state", ws.closed)).upper()
+    if hasattr(ws, "state"):
+        state_str = str(ws.state).upper()
+        return "CLOSED" in state_str or "CLOSING" in state_str
+    return getattr(ws, "closed", False)
 
 class ClawRoyaleWSClient:
     def __init__(self, api_client: Any = None, brain: Optional[Brain] = None):
@@ -37,18 +40,24 @@ class ClawRoyaleWSClient:
         self._dead_flag_logged = False
         self._finished_flag_logged = False
         self._force_long_cooldown = False
-        self.can_act = True
+        self.can_act = True # Inisialisasi status tindakan default
 
     async def connect_and_loop(self):
         self.is_running = True
         uri = f"{WS_BASE_URL}/join"
         
-        # Resolusi header autentikasi & versioning
-        api_key_active = self.api_client.session.headers.get("X-API-Key", API_KEY) if self.api_client else API_KEY
-        x_version = self.api_client.session.headers.get("X-Version", "1.0.0") if self.api_client else "1.0.0"
-        headers = {"X-API-Key": api_key_active, "X-Version": x_version}
+        api_key_active = API_KEY
+        x_version = "1.0.0"
+        
+        if self.api_client and hasattr(self.api_client, "session"):
+            api_key_active = self.api_client.session.headers.get("X-API-Key", API_KEY)
+            x_version = self.api_client.session.headers.get("X-Version", "1.0.0")
 
-        # Kompatibilitas versi websockets library
+        headers = {
+            "X-API-Key": api_key_active,
+            "X-Version": x_version
+        }
+
         connect_kwargs = {}
         try:
             import websockets.asyncio.client
@@ -60,23 +69,33 @@ class ClawRoyaleWSClient:
             try:
                 self._force_long_cooldown = False
                 logger.info(f"[WS] Menghubungkan ke: {uri}")
-                async with websockets.connect(uri, open_timeout=WS_TIMEOUT_SECONDS, **connect_kwargs) as websocket:
+                async with websockets.connect(
+                    uri, 
+                    open_timeout=WS_TIMEOUT_SECONDS, 
+                    **connect_kwargs
+                ) as websocket:
                     self.websocket = websocket
                     self.reconnect_attempts = 0
-                    self._dead_flag_logged = self._finished_flag_logged = False
+                    self._dead_flag_logged = False
+                    self._finished_flag_logged = False
                     logger.info("[WS] Koneksi terbuka murni. Menunggu Welcome Frame...")
                     
                     ping_task = asyncio.create_task(self._send_ping_loop())
+                    
                     try:
                         async for message in websocket:
                             await self._handle_incoming_frame(message)
                     except websockets.exceptions.ConnectionClosed as e:
-                        logger.warning(f"[WS] Soket terputus: Code {e.code}, Reason: {e.reason}")
+                        logger.warning(f"[WS] Soket terputus dari sisi server. (Code: {e.code}, Reason: {e.reason})")
+                        
+                        # PENANGANAN RATE LIMIT (Code 4003)
                         if e.code == 4003 or "ip agent limit" in str(e.reason).lower():
-                            logger.error("[WS RATE LIMIT] Terdeteksi pembatasan IP dari server.")
+                            logger.error("[WS RATE LIMIT] Terdeteksi pembatasan IP/Agent dari server (Phantom Socket).")
                             self._force_long_cooldown = True
+                            
                     finally:
                         ping_task.cancel()
+                        
             except Exception as e:
                 logger.error(f"[WS] Gagal terhubung ke server: {str(e)}")
                 
@@ -88,8 +107,16 @@ class ClawRoyaleWSClient:
                 logger.error("[WS] Batas maksimal reconnect terlampaui. Menghentikan proses.")
                 break
                 
-            delay = 60 if self._force_long_cooldown else min(30, int(RECONNECT_DELAY_SECONDS * max(1, self.reconnect_attempts - 1)))
-            logger.info(f"[WS] Mencoba menyambungkan kembali dalam {delay} detik...")
+            # PENJADWALAN DELAY (BACKOFF)
+            if self._force_long_cooldown:
+                delay = 60  # Wajib tunggu 60 detik agar server mematikan sesi lama
+                logger.info(f"[WS RATE LIMIT] Menunda koneksi selama {delay} detik untuk menghindari pemblokiran permanen...")
+            else:
+                delay = RECONNECT_DELAY_SECONDS
+                if self.reconnect_attempts > 2:
+                    delay = min(30, int(RECONNECT_DELAY_SECONDS * self.reconnect_attempts))
+                logger.info(f"[WS] Mencoba menyambungkan kembali dalam {delay} detik...")
+                
             await asyncio.sleep(delay)
 
     async def _handle_incoming_frame(self, message: str):
@@ -99,42 +126,56 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        # Deteksi hibrida Game State Frame
-        is_game_state = isinstance(payload, dict) and any(k in payload or (k in payload.get("view", {}) if isinstance(payload.get("view"), dict) else False) or (k in payload.get("data", {}) if isinstance(payload.get("data"), dict) else False) for k in ["self"])
+        is_game_state = False
+        if isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
+                is_game_state = True
 
         if is_game_state:
             state = GameState(payload)
+            
+            # --- PENANGANAN GAME SELESAI / GUGUR ---
             game_status = payload.get("status", "running")
             
-            # --- PROTEKSI AGEN GUGUR / GAME SELESAI ---
             if game_status == "finished":
                 if not self._finished_flag_logged:
-                    logger.info("\n=== PERTANDINGAN SELESAI (FINISHED) ===\n[WS] Bersiap mengantre ke game baru...")
+                    logger.info("\n=== PERTANDINGAN SELESAI (STATUS: FINISHED) ===")
+                    logger.info("[WS] Meninggalkan ruangan. Bersiap mencari antrean game baru...")
                     self._finished_flag_logged = True
+                    
                 self.brain.planner.clear(reason="Game Finished")
+                
                 if self.websocket and not is_ws_closed(self.websocket):
                     asyncio.create_task(self.websocket.close())
                 return
             
             if not state.is_player_alive:
                 self.brain.planner.clear(reason="Agent Gugur (HP 0)")
+                
                 if not getattr(self, '_last_turn_dead', None) == state.turn:
                     try:
                         GUILogger.log_turn(state, None, getattr(self, 'can_act', True))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"[GUI ERROR] Terjadi kerusakan pada gui_logger:\n{traceback.format_exc()}")
                     self._last_turn_dead = state.turn
+                
                 if not self._dead_flag_logged:
-                    logger.info("[WS] Agen GUGUR. Standby menunggu Match selesai dari sisi server...")
+                    logger.info("[WS] Agen GUGUR. Standby di dalam room menunggu server menyelesaikan Match ini...")
                     self._dead_flag_logged = True
+                
                 return
-            # ------------------------------------------
+            # ----------------------------------------------
             
             action = self.brain.think(state)
+            
             try:
                 GUILogger.log_turn(state, action, getattr(self, 'can_act', True))
-            except Exception:
-                logger.error(f"[GUI ERROR] Kerusakan pada gui_logger:\n{traceback.format_exc()}")
+            except Exception as e:
+                logger.error(f"[GUI ERROR] Terjadi kerusakan pada src/network/gui_logger.py:\n{traceback.format_exc()}")
 
             if action:
                 await self.send_action(action)
@@ -143,19 +184,23 @@ class ClawRoyaleWSClient:
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
         if frame_type == "error":
-            code, msg = payload.get("code", "UNKNOWN"), payload.get("message", "Terjadi kesalahan")
+            code = payload.get("code", "UNKNOWN")
+            msg = payload.get("message", "Terjadi kesalahan")
             logger.error(f"[WS ERROR] Dari server: {code} - {msg}")
-            if code == 4003 or "limit exceeded" in msg.lower():
+            
+            # Jika server mengembalikan error Rate Limit dalam bentuk payload
+            if "limit exceeded" in msg.lower() or code == 4003:
                 self._force_long_cooldown = True
             return
             
         elif frame_type == "action_result":
-            # Parsing flat frame asinkron
-            data_dict = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
-            success = payload.get("success", data_dict.get("success", True))
-            reason = payload.get("reason", data_dict.get("reason", "None"))
-            cd_rem = payload.get("cooldownRemainingMs", data_dict.get("cooldownRemainingMs"))
-            self.can_act = payload.get("canAct", payload.get("can_act", data_dict.get("canAct", True)))
+            # [REVISI SINKRONISASI FLAT FRAME]: Membaca data secara hibrida dari root level (Flat Frame) maupun nested data
+            success = payload.get("success", payload.get("data", {}).get("success", True))
+            reason = payload.get("reason", payload.get("data", {}).get("reason", "None"))
+            cd_rem = payload.get("cooldownRemainingMs", payload.get("data", {}).get("cooldownRemainingMs"))
+            can_act = payload.get("canAct", payload.get("can_act", payload.get("data", {}).get("canAct", True)))
+            
+            self.can_act = can_act
             
             if cd_rem is not None:
                 self.brain.local_cooldown_end = time.time() + (float(cd_rem) / 1000.0)
@@ -168,8 +213,10 @@ class ClawRoyaleWSClient:
             return
 
         elif frame_type == "can_act_changed":
-            self.can_act = payload.get("canAct", payload.get("can_act", True))
-            if self.can_act:
+            # [BARU]: Sinkronisasi cooldown real-time saat cooldown aksi selesai
+            can_act = payload.get("canAct", payload.get("can_act", True))
+            self.can_act = can_act
+            if can_act:
                 self.brain.local_cooldown_end = time.time()
                 logger.info("[WS] Cooldown selesai. Agen SIAP BERTINDAK!")
             return
@@ -186,20 +233,35 @@ class ClawRoyaleWSClient:
             return
 
         elif frame_type in ["chat", "whisper", "talk", "broadcast"]:
-            logger.info(f"\n[WS RECEIVE {frame_type.upper()}] Dari: {payload.get('sender', 'Unknown')} | Pesan: '{payload.get('message', '')}'\n")
+            sender = payload.get("sender", "Unknown")
+            content = payload.get("message", "")
+            logger.info(f"\n[WS RECEIVE {frame_type.upper()}] Dari: {sender} | Pesan: '{content}'\n")
             return
 
         elif frame_type == "welcome":
-            welcome_msg = payload.get("data", payload.get("message", ""))
-            welcome_msg = welcome_msg if isinstance(welcome_msg, str) else welcome_msg.get("entryType", "")
+            welcome_msg = ""
+            data_val = payload.get("data")
+            if isinstance(data_val, str):
+                welcome_msg = data_val
+            elif isinstance(data_val, dict):
+                welcome_msg = data_val.get("entryType", "")
+            else:
+                welcome_msg = payload.get("message", "")
+
             decision = payload.get("decision", "")
-            
             logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            if any(x in str(welcome_msg).lower() or x in str(decision).lower() for x in ["ask_entry_type", "choose entrytype", "both free and paid"]):
-                await self.websocket.send(json.dumps({"type": "hello", "entryType": "free"}))
+            welcome_lower = welcome_msg.lower()
+            decision_lower = decision.lower()
+            
+            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower or decision_lower == "ask_entry_type":
+                join_payload = {
+                    "type": "hello",
+                    "entryType": "free"
+                }
+                await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif "active game found" in str(welcome_msg).lower() or welcome_msg == "ALREADY_IN_GAME" or str(decision).lower() == "already_in_game":
+            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME" or decision_lower == "already_in_game":
                 logger.info("[WS JOIN] Agen terdeteksi di game yang masih berjalan. Melakukan Re-sync...")
             return
 
@@ -210,15 +272,20 @@ class ClawRoyaleWSClient:
 
         payload = {
             "type": "action",
-            "data": {"type": action.action_type, **action.data},
+            "data": {
+                "type": action.action_type,
+                **action.data
+            },
             "thought": getattr(action, "thought", "")
         }
         
         try:
             await self.websocket.send(json.dumps(payload))
             logger.info(f"[WS SEND] Mengirim aksi: {action.action_type}")
+            
             if action.action_type not in ["pickup", "equip", "talk"]:
                 self.brain.local_cooldown_end = time.time() + 30.0
+                
         except Exception as e:
             logger.error(f"[WS SEND] Gagal mengirim payload aksi: {str(e)}")
 
