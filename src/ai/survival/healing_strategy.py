@@ -18,7 +18,7 @@ class HealingStrategy:
     @staticmethod
     def evaluate_heal_retreat(state: GameState, memory: WorldModel) -> Optional[MoveAction]:
         """
-        Jika HP terluka (< 75%) dan kita memiliki ramuan HP di tas, tetapi kondisi tidak aman (ada musuh),
+        Jika HP terluka parah (< 40%) dan kita memiliki ramuan HP di tas, tetapi kondisi tidak aman (ada musuh),
         cari region tetangga terdekat yang tidak ada musuh dan bukan badai untuk mengungsi khusus untuk healing.
         """
         player = state.player
@@ -28,7 +28,10 @@ class HealingStrategy:
         enemies_in_same_region = [e for e in visible_enemies if e.region_id == state.current_region.id and e.is_alive]
 
         hp_ratio = player.hp / player.max_hp
-        if hp_ratio > 0.75 or len(enemies_in_same_region) == 0:
+        
+        # [AUDIT PREDATOR]: Hanya mengungsi untuk healing jika HP benar-benar kritis (<= 40%).
+        # Mencegah bot menjadi pengecut (coward) melarikan diri saat HP masih 50%-75% padahal bisa menang duel.
+        if hp_ratio > 0.40 or len(enemies_in_same_region) == 0:
             return None
 
         has_hp_potion = any(isinstance(i, Potion) and i.recovery_type == "hp" for i in player.inventory)
