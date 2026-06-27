@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import websockets
-from typing import Optional
+from typing import Optional, Any
 from src.models.game_state import GameState
 from src.ai.brain import Brain
 from src.config.constants import (
@@ -18,10 +18,11 @@ from src.config.constants import (
 
 logger = logging.getLogger("ClawRoyale.WebSocket")
 
-# [REVISI NAMA KELAS]: Diubah menjadi ClawRoyaleWSClient agar sinkron dengan run.py
 class ClawRoyaleWSClient:
-    def __init__(self):
-        self.brain = Brain()
+    # [REVISI CONSTRUCTOR]: Mengubah signature agar menerima api_client dan brain sesuai inisialisasi di run.py
+    def __init__(self, api_client: Any = None, brain: Optional[Brain] = None):
+        self.api_client = api_client
+        self.brain = brain if brain is not None else Brain()
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.is_running = False
         self.reconnect_attempts = 0
