@@ -2,6 +2,7 @@ src/
 │
 ├── network/
 │   ├── websocket.py
+│   ├── frame_processor.py
 │   ├── gui_logger.py
 │   └── api.py
 │
@@ -56,7 +57,6 @@ src/
 │
 └── run.py
 
-
 link url
 
 ai>combat>
@@ -108,6 +108,7 @@ models>game_state.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/
 network>api.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/api.py
 network>gui_logger.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/gui_logger.py
 network>websocket.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/websocket.py
+network>frame_processor.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/frame_processor.py
 
 readment.txt https://github.com/Vdreamland/moltygamesbots/blob/main/readment.txt
 .env https://github.com/Vdreamland/moltygamesbots/blob/main/.env
