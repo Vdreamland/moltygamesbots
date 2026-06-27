@@ -5,7 +5,7 @@ Tanggung jawab: Menggabungkan seluruh utilitas inventaris (looting, auto-equip, 
 """
 
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Any
 from src.models.game_state import GameState
 from src.models.action import Action
 from src.config.constants import WEIGHT_GOAL_LOOT, BONUS_WEIGHT_EQUIP, BONUS_WEIGHT_CONSUMABLE
