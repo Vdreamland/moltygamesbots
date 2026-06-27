@@ -34,18 +34,18 @@ class LootStrategy:
 
         return False
 
-    # [PENYEMPURNAAN]: Dibuat mendukung pemanggilan sebagai StaticMethod maupun Instance Method (*args, **kwargs)
-    # untuk menghindari crash penanganan parameter 'self' dari inventory_evaluator.py
+    # [PENYEMPURNAAN MUTLAK]: Menggunakan Duck Typing (hasattr) dan Class Name matching 
+    # agar deteksi GameState kebal 100% dari isu reloading/import di memori Python.
     @staticmethod
     def evaluate_ground_loot(*args, **kwargs) -> Optional[Tuple[Action, float]]:
         """
         Wrapper method kompatibilitas untuk inventory_evaluator.py.
         Mendukung pemanggilan statis maupun instansi secara aman.
         """
-        # Resolusi state secara fail-safe dari argumen yang dilemparkan
         state: Optional[GameState] = None
         for arg in args:
-            if isinstance(arg, GameState):
+            # GameState selalu memiliki atribut utama 'player'
+            if hasattr(arg, "player") or type(arg).__name__ == "GameState":
                 state = arg
                 break
         if not state:
@@ -79,7 +79,7 @@ class LootStrategy:
             return candidates
 
         for item in ground_items:
-            # [ANTI PENIMBUNAN SENJATA]: Batasi penyimpanan senjata maksimal 2 unit
+            # [BARU - ANTI PENIMBUNAN SENJATA]: Batasi penyimpanan senjata maksimal 2 unit
             current_weapons = []
             if player.equipped_weapon:
                 current_weapons.append(player.equipped_weapon)
