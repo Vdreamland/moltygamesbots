@@ -5,7 +5,7 @@ Tanggung jawab: Menentukan kelayakan memungut barang di tanah (Loot Rules).
 """
 
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from src.models.game_state import GameState
 from src.models.entities import Item, Weapon, Armor, Potion
 from src.models.action import Action, PickupAction
@@ -35,6 +35,18 @@ class LootStrategy:
         return False
 
     @staticmethod
+    def evaluate_ground_loot(state: GameState) -> Optional[Tuple[Action, float]]:
+        """
+        Wrapper method kompatibilitas untuk inventory_evaluator.py.
+        Mengambil daftar kandidat looting, lalu mengembalikan kandidat tunggal dengan skor tertinggi.
+        """
+        candidates = LootStrategy.evaluate_looting(state)
+        if not candidates:
+            return None
+        # Cari dan kembalikan aksi pemungutan dengan skor utilitas terbesar
+        return max(candidates, key=lambda x: x[1])
+
+    @staticmethod
     def evaluate_looting(state: GameState) -> List[Tuple[Action, float]]:
         candidates: List[Tuple[Action, float]] = []
         player = state.player
@@ -52,7 +64,7 @@ class LootStrategy:
             return candidates
 
         for item in ground_items:
-            # [REVISI BARU - ANTI HOARDING]: Batasi penyimpanan senjata maksimal 2 unit (termasuk yang di-equip)
+            # [BARU - ANTI HOARDING]: Batasi penyimpanan senjata maksimal 2 unit (termasuk yang di-equip)
             total_weapons = (1 if player.equipped_weapon else 0) + len([i for i in inventory if isinstance(i, Weapon)])
             if isinstance(item, Weapon) and total_weapons >= 2:
                 logger.debug(f"[LOOT] Melewati senjata {item.name} karena sudah membawa maksimal 2 senjata taktis.")
