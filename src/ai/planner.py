@@ -30,7 +30,10 @@ class Planner:
         if not self.action_queue:
             return None
 
-        if not state.player_can_act:
+        # [REVISI]: Ambil status can_act aman dari data_payload murni untuk mencegah AttributeError
+        can_act = state.data_payload.get("canAct", True)
+
+        if not can_act:
             next_action = self.action_queue[0]
             if not getattr(next_action, "is_free_action", False):
                 logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis.")
@@ -42,7 +45,6 @@ class Planner:
 
     def clear(self, reason: str = ""):
         """
-        [REVISI]: Menambahkan parameter 'reason' agar sesuai dengan pemanggilan dari Brain.
         Membatalkan seluruh rencana aksi (dipanggil saat Emergency Mode).
         """
         if reason:
