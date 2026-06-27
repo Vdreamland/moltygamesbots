@@ -4,6 +4,7 @@ Tanggung jawab: Memformat dan mencetak visualisasi data taktis agen per turn
                dalam bentuk log bergulir (rolling logs) yang terstruktur, rapi, dan padat angka.
                Mendukung rincian tas, pertahanan DEF (Armor), jumlah Kills, Senjata, dan Zirah terpasang.
                Menerapkan lokalisasi nama region otomatis (Fog of War) tanpa penginputan manual.
+               Kini mendukung pengelompokan item kembar (contoh: Potion x2).
 """
 
 from typing import Optional
@@ -53,15 +54,24 @@ class GUILogger:
                 thought = '"Sedang menunggu cooldown aksi selesai"'
             cooldown_status = "Menunggu Cooldown (30s)" if not can_act else "SIAP BERTINDAK!"
         
-        # Format daftar isi tas
-        bag_items_desc = ", ".join([f"{item.name} ({getattr(item, 'item_type', getattr(item, 'type', 'item'))})" for item in player.inventory]) if player.inventory else "None"
+        # [PERBAIKAN VISUAL]: Pengelompokan daftar isi tas agar rapi (Contoh: Potion x2)
+        bag_counts = {}
+        for item in player.inventory:
+            itype = getattr(item, 'item_type', getattr(item, 'type', 'item'))
+            key = f"{item.name} ({itype})"
+            bag_counts[key] = bag_counts.get(key, 0) + 1
+        bag_items_desc = ", ".join([f"{key} x{count}" for key, count in bag_counts.items()]) if bag_counts else "None"
 
-        # Format loot di tanah
+        # [PERBAIKAN VISUAL]: Pengelompokan daftar barang di tanah agar rapi
         ground_items = getattr(region, "items", [])
-        ground_items_desc = ", ".join([f"{item.name} ({getattr(item, 'item_type', getattr(item, 'type', 'item'))})" for item in ground_items]) if ground_items else "None"
+        ground_counts = {}
+        for item in ground_items:
+            itype = getattr(item, 'item_type', getattr(item, 'type', 'item'))
+            key = f"{item.name} ({itype})"
+            ground_counts[key] = ground_counts.get(key, 0) + 1
+        ground_items_desc = ", ".join([f"{key} x{count}" for key, count in ground_counts.items()]) if ground_counts else "None"
 
-        # [OTOMATIS]: Terjemahkan UUID koneksi tetangga menjadi Nama Asli jika pernah dikunjungi,
-        # atau tampilkan kode Sektor otomatis jika belum pernah dijelajahi (Fog of War)
+        # Terjemahkan UUID koneksi tetangga menjadi Nama Asli jika pernah dikunjungi (Fog of War)
         conn_names = []
         for r_id in region.connections:
             r_name = GUILogger.REGION_MAP.get(r_id, f"Sektor-{r_id[:4].upper()}")

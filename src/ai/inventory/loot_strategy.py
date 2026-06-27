@@ -64,11 +64,45 @@ class LootStrategy:
             return candidates
 
         for item in ground_items:
-            # [BARU - ANTI HOARDING]: Batasi penyimpanan senjata maksimal 2 unit (termasuk yang di-equip)
-            total_weapons = (1 if player.equipped_weapon else 0) + len([i for i in inventory if isinstance(i, Weapon)])
-            if isinstance(item, Weapon) and total_weapons >= 2:
-                logger.debug(f"[LOOT] Melewati senjata {item.name} karena sudah membawa maksimal 2 senjata taktis.")
-                continue
+            # [PERBAIKAN - ANTI PENIMBUNAN SENJATA]: Batasi penyimpanan senjata maksimal 2 unit
+            current_weapons = []
+            if player.equipped_weapon:
+                current_weapons.append(player.equipped_weapon)
+            for i in inventory:
+                if isinstance(i, Weapon):
+                    current_weapons.append(i)
+                    
+            if isinstance(item, Weapon) and len(current_weapons) >= 2:
+                # Cari kekuatan senjata terlemah yang kita miliki saat ini
+                from src.ai.inventory.weapon_strategy import WeaponStrategy
+                weakest_weapon = min(current_weapons, key=lambda w: WeaponStrategy.calculate_weapon_score(w))
+                weakest_score = WeaponStrategy.calculate_weapon_score(weakest_weapon)
+                
+                # Hanya boleh ambil senjata di tanah jika ia terbukti lebih kuat dari senjata terlemah kita!
+                new_weapon_score = WeaponStrategy.calculate_weapon_score(item)
+                if new_weapon_score <= weakest_score:
+                    logger.debug(f"[LOOT] Melewati senjata {item.name} (Skor: {new_weapon_score:.1f}) karena sudah memiliki 2 senjata yang lebih kuat.")
+                    continue
+
+            # [PERBAIKAN - ANTI PENIMBUNAN ZIRAH]: Batasi penyimpanan baju zirah maksimal 2 unit
+            current_armors = []
+            if player.equipped_armor:
+                current_armors.append(player.equipped_armor)
+            for i in inventory:
+                if isinstance(i, Armor):
+                    current_armors.append(i)
+                    
+            if isinstance(item, Armor) and len(current_armors) >= 2:
+                # Cari kekuatan zirah terlemah yang kita miliki saat ini
+                from src.ai.inventory.equip_strategy import EquipStrategy
+                weakest_armor = min(current_armors, key=lambda a: EquipStrategy.calculate_armor_score(a))
+                weakest_score = EquipStrategy.calculate_armor_score(weakest_armor)
+                
+                # Hanya boleh ambil zirah di tanah jika ia terbukti lebih kuat dari zirah terlemah kita!
+                new_armor_score = EquipStrategy.calculate_armor_score(item)
+                if new_armor_score <= weakest_score:
+                    logger.debug(f"[LOOT] Melewati zirah {item.name} (Skor: {new_armor_score:.1f}) karena sudah memiliki 2 zirah yang lebih kuat.")
+                    continue
 
             # Cegah duplikasi item tipe sama dengan tier lebih rendah/setara
             if LootStrategy._is_useless_duplicate(item, inventory, player):
