@@ -1,7 +1,7 @@
 """
 src/ai/planner.py
 Tanggung jawab: Mengelola multi-step action, antrian tugas (queue), 
-serta validasi akhir sebelum aksi diteruskan ke network layer.
+               serta validasi akhir sebelum aksi diteruskan ke network layer.
 """
 
 import logging
@@ -27,14 +27,17 @@ class Planner:
             return None
 
         current_time = time.time()
-        if current_time - self.last_pop_time < 2.0:
+        next_action = self.action_queue[0]
+        is_free = getattr(next_action, "is_free_action", False)
+
+        # [PENYEMPURNAAN]: Aksi gratis (EP 0 seperti pickup & equip) dibebaskan dari pembatas interval 2.0 detik
+        if not is_free and (current_time - self.last_pop_time < 2.0):
             return None
 
-        if not can_act:
-            next_action = self.action_queue[0]
-            if not getattr(next_action, "is_free_action", False):
-                logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis di antrean.")
-                return None
+        # [PENYEMPURNAAN]: Aksi gratis diizinkan bypass cooldown can_act agar bisa langsung dipasang pada turn yang sama
+        if not can_act and not is_free:
+            logger.debug("[PLANNER] Bot dalam cooldown, menahan aksi non-gratis di antrean.")
+            return None
 
         action = self.action_queue.popleft()
         self.last_pop_time = current_time
