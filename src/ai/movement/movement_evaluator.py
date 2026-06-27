@@ -1,6 +1,6 @@
 """
 src/ai/movement/movement_evaluator.py
-Tanggung jawab: Menghitung utilitas pergerakan final untuk MoveAction dan ExploreAction.
+Tanggung jawab: Menhitung utilitas pergerakan final untuk MoveAction dan ExploreAction.
  Mengamankan evakuasi badai dan memicu pengejaran musuh taktis (Chase Strategy).
 """
 
@@ -37,15 +37,18 @@ class MovementEvaluator:
                 ))
                 return candidates
 
-        # [REVISI]: Pengejaran Cerdas (Chase Hunt) di wilayah tetangga
-        if player.equipped_weapon and player.hp > 40 and player.ep >= 2:
+        # Deteksi musuh di region saat ini
+        enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
+
+        # [REVISI EP & PRIORITAS]: 
+        # 1. Hanya mengejar jika TIDAK ada musuh di region saat ini (Fokus tarung jika ada musuh lokal).
+        # 2. Hanya mengejar jika sisa energi EP aman (EP > 3) untuk menghindari kebocoran energi.
+        if player.equipped_weapon and player.hp > 40 and player.ep > 3 and len(enemies_in_same_region) == 0:
             for enemy in state.visible_enemies:
                 if enemy.region_id in connections:
-                    # Hitung peluang menang nyata melawan musuh di wilayah tetangga
                     from src.ai.combat.win_probability import WinProbabilityCalculator
                     win_prob = WinProbabilityCalculator.calculate(player, enemy)
                     
-                    # Jika peluang menang tinggi (>= 70%) ATAU musuh sangat sekarat (HP < 20), lakukan penyerbuan!
                     if (win_prob >= 0.70 or enemy.hp < 20) and enemy.region_id not in state.pending_deathzones:
                         chase_utility = 250.0
                         candidates.append((
