@@ -13,14 +13,19 @@ logger = logging.getLogger("ClawRoyale.ExplorationStrategy")
 
 class ExplorationStrategy:
     @staticmethod
-    def calculate_exploration_score(region_id: str, memory: WorldModel, current_turn: int) -> float:
+    def calculate_exploration_score(region_id: str, memory: WorldModel, current_turn: int, alert_gauge: int = 0) -> float:
         """
         Menghitung bonus eksplorasi untuk wilayah tetangga.
         Semakin jarang atau semakin lama wilayah tersebut ditinggalkan, semakin tinggi nilainya.
         """
+        # [REVISI ALERT GAUGE]: Jika alert gauge mendekati batas mematikan (10), blokir eksplorasi reruntuhan
+        if alert_gauge >= 6:
+            logger.debug(f"[EXPLORE CHECK] Memotong skor eksplorasi karena Alert Gauge tinggi ({alert_gauge}/10). Menghindari Guardian.")
+            return -150.0
+
         history = memory.visited_regions_history
         if not history:
-            return 100.0  # Belum pernah dikunjungi sama sekali
+            return 100.0 # Belum pernah dikunjungi sama sekali
 
         # Cari berapa kali kita mengunjungi region ini dan kapan terakhir kali
         visit_count = 0
@@ -37,9 +42,9 @@ class ExplorationStrategy:
         turns_since_last_visit = current_turn - last_visit_turn
         
         if turns_since_last_visit == 1:
-            return -200.0  # Penalti keras anti-oscillation
+            return -200.0 # Penalti keras anti-oscillation
         elif turns_since_last_visit == 2:
-            return -50.0   # Penalti sedang jika baru 2 turn berlalu
+            return -50.0 # Penalti sedang jika baru 2 turn berlalu
 
         # 2. Formula Nilai Eksplorasi
         # Semakin lama tidak dikunjungi, skor semakin tinggi

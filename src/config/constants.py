@@ -38,6 +38,14 @@ EP_COST_REST = 0
 EP_COST_PICKUP = 0
 EP_COST_EQUIP = 0
 
+# Biaya EP Khusus Senjata Berat (Sesuai Aturan Resmi ClawRoyale)
+WEAPON_EP_COSTS = {
+    "katana": 2,
+    "sniper": 2,
+    "sniper rifle": 2,
+    "sniper_rifle": 2
+}
+
 # Inventory Config
 MAX_INVENTORY_SLOTS = 10
 

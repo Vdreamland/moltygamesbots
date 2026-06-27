@@ -1,7 +1,7 @@
 """
 src/ai/movement/movement_evaluator.py
 Tanggung jawab: Menghitung utilitas pergerakan final untuk MoveAction dan ExploreAction.
- Mengamankan evakuasi badai dan memicu pengejaran musuh taktis (Chase Strategy).
+               Mengamankan evakuasi badai dan memicu pengejaran musuh taktis (Chase Strategy).
 """
 
 import logging
@@ -74,12 +74,16 @@ class MovementEvaluator:
         # [REVISI META]: Hanya izinkan eksplorasi reruntuhan jika bot sudah bersenjata (player.equipped_weapon is not None).
         # Menghindari pemborosan EP taktis saat bot sedang bertelanjang dada mencari senjata di awal game.
         if ruin_gauge > 0 and ruin_gauge < 100 and player.equipped_weapon is not None:
-            explore_utility = WEIGHT_GOAL_EXPLORE + 30.0
-            candidates.append((
-                ExploreAction(
-                    thought=f"Mengisi ruin gauge di region {state.current_region.name}."
-                ),
-                explore_utility
-            ))
+            # [REVISI ALERT GAUGE]: Blokir eksplorasi jika alert gauge kritis (mencegah amukan Guardian)
+            if player.alert_gauge >= 6:
+                logger.warning(f"[EXPLORE] Eksplorasi reruntuhan dicegah karena alert gauge tinggi ({player.alert_gauge}/10)!")
+            else:
+                explore_utility = WEIGHT_GOAL_EXPLORE + 30.0
+                candidates.append((
+                    ExploreAction(
+                        thought=f"Mengisi ruin gauge di region {state.current_region.name}."
+                    ),
+                    explore_utility
+                ))
 
         return candidates

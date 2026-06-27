@@ -12,6 +12,7 @@ class Action:
         self.data = data or {}
         # Batasan resmi pemikiran AI: maksimal 700 karakter
         self.thought = thought[:700] if thought else ""
+        self.is_free_action = action_type in ["pickup", "equip", "talk", "whisper", "broadcast"]
 
     def to_json(self) -> Dict[str, Any]:
         """

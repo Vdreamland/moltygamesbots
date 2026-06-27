@@ -1,8 +1,8 @@
 """
 src/ai/action_selector.py
 Tanggung jawab: Menguji validitas teknis seluruh kandidat aksi,
- memastikan kepatuhan EP & cooldown region target (mencegah INSUFFICIENT_EP).
- Menggunakan tingkat logging DEBUG untuk mencegah spam pengulangan di konsol.
+               memastikan kepatuhan EP & cooldown region target (mencegah INSUFFICIENT_EP).
+               Menggunakan tingkat logging DEBUG untuk mencegah spam pengulangan di konsol.
 """
 
 import logging
@@ -14,7 +14,8 @@ from src.config.constants import (
     EP_COST_MOVE, 
     EP_COST_MOVE_STORM_WATER, 
     EP_COST_EXPLORE, 
-    EP_COST_ATTACK
+    EP_COST_ATTACK,
+    WEAPON_EP_COSTS
 )
 
 logger = logging.getLogger("ClawRoyale.ActionSelector")
@@ -28,7 +29,7 @@ class ActionSelector:
 
         for action, score in candidate_actions:
             if not self._has_sufficient_ep(action, current_ep, state):
-                logger.debug(f"[SELECTOR] Aksi {action.action_type} diabaikan karena kekurangan EP (Sisa EP: {current_ep})")
+                logger.debug(f"[SELECTOR] Aksi {action.action_type} diabaikan karena kekurangan EP atau tidak valid (Sisa EP: {current_ep})")
                 continue
 
             if action.action_type == "attack":
@@ -50,6 +51,10 @@ class ActionSelector:
 
     def _has_sufficient_ep(self, action: Action, current_ep: int, state: GameState) -> bool:
         act_type = action.action_type
+        
+        # Aksi gratis (EP 0) selalu diizinkan lewat
+        if getattr(action, "is_free_action", False):
+            return True
         
         # [REVISI EP BUFFER]: Cegah pergerakan dan eksplorasi tidak darurat jika EP kritis (EP <= 2) saat aman.
         enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id]
@@ -85,11 +90,27 @@ class ActionSelector:
                 return current_ep >= EP_COST_MOVE_STORM_WATER
             
             return current_ep >= EP_COST_MOVE
-        
+            
         elif act_type == "explore":
             return current_ep >= EP_COST_EXPLORE
-        
+            
         elif act_type == "attack":
-            return current_ep >= EP_COST_ATTACK
-        
+            # [REVISI EP SERANGAN DINAMIS]: Tentukan biaya EP berdasarkan senjata aktif
+            equipped_weapon = state.player.equipped_weapon
+            attack_cost = EP_COST_ATTACK
+            if equipped_weapon:
+                weapon_name = equipped_weapon.name.lower()
+                for key, cost in WEAPON_EP_COSTS.items():
+                    if key in weapon_name:
+                        attack_cost = cost
+                        break
+            return current_ep >= attack_cost
+            
+        elif act_type == "interact":
+            # [REVISI INTERACT BADAI]: Blokir keras interact jika berada di dalam Death Zone
+            if state.current_region.is_death_zone:
+                logger.debug("[SELECTOR] Memblokir aksi interact karena berada di dalam Death Zone.")
+                return False
+            return True
+            
         return True

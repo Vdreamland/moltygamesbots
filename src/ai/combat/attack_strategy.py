@@ -1,15 +1,15 @@
 """
 src/ai/combat/attack_strategy.py
 Tanggung jawab: Menentukan kelayakan menyerang (Attack Rules).
- Menerapkan audit keberanian pembunuh oportunis (Finish-Kill Instinct):
- Tetap izinkan serangan tangan kosong untuk eksekusi finisher (HP <= 5)
- di region yang sama demi merebut senjata jarahan mereka.
+               Menerapkan audit keberanian pembunuh oportunis (Finish-Kill Instinct):
+               Tetap izinkan serangan tangan kosong untuk eksekusi finisher (HP <= 5)
+               di region yang sama demi merebut senjata jarahan mereka.
 """
 
 import logging
 from src.models.game_state import GameState
 from src.models.entities import Agent
-from src.config.constants import HP_RETREAT_THRESHOLD, EP_MIN_RESERVE
+from src.config.constants import HP_RETREAT_THRESHOLD, EP_MIN_RESERVE, EP_COST_ATTACK, WEAPON_EP_COSTS
 from src.ai.combat.win_probability import WinProbabilityCalculator
 
 logger = logging.getLogger("ClawRoyale.AttackStrategy")
@@ -43,7 +43,7 @@ class AttackStrategy:
                 distance = 1
             else:
                 distance = 2
-                
+        
         weapon_range = player.equipped_weapon.range if player.equipped_weapon else 0
         if distance > weapon_range:
             logger.warning(f"[ATTACK CHECK] Ditolak: Target {target.name} berada di luar jangkauan (Jarak: {distance}, Range Senjata: {weapon_range}).")
@@ -64,8 +64,21 @@ class AttackStrategy:
             logger.warning(f"[ATTACK CHECK] Ditolak: HP rendah ({player.hp}) melawan musuh kuat. Wajib Retreat.")
             return False
 
-        if player.ep <= EP_MIN_RESERVE:
-            logger.warning(f"[ATTACK CHECK] Ditolak: EP kritis ({player.ep}). Sisa EP wajib untuk kabur.")
+        # [REVISI EP SERANGAN DINAMIS]: Cek biaya EP senjata taktis
+        attack_cost = EP_COST_ATTACK
+        if player.equipped_weapon:
+            weapon_name = player.equipped_weapon.name.lower()
+            for key, cost in WEAPON_EP_COSTS.items():
+                if key in weapon_name:
+                    attack_cost = cost
+                    break
+
+        if player.ep < attack_cost:
+            logger.warning(f"[ATTACK CHECK] Ditolak: EP tidak mencukupi untuk menyerang dengan {player.equipped_weapon.name if player.equipped_weapon else 'Fist'} (Dibutuhkan: {attack_cost}, Sisa: {player.ep}).")
+            return False
+
+        if player.ep - attack_cost < EP_MIN_RESERVE and not is_kill_opportunity:
+            logger.warning(f"[ATTACK CHECK] Ditolak: EP setelah menyerang ({player.ep - attack_cost}) di bawah batas aman cadangan ({EP_MIN_RESERVE}). Sisa EP wajib untuk kabur.")
             return False
 
         if state.current_region.is_death_zone:
