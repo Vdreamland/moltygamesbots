@@ -25,19 +25,9 @@ class Evaluator:
         self.inventory_evaluator = inventory
         self.survival_evaluator = survival
 
-    def evaluate_all_options(self, state: GameState, memory: WorldModel) -> List[Tuple[Action, float]]:
+    def evaluate_all_options(self, state: GameState, memory: WorldModel, can_act: bool) -> List[Tuple[Action, float]]:
         options: List[Tuple[Action, float]] = []
         
-        # [REVISI JANGKAUAN]: Deteksi canAct secara mendalam dari nested JSON
-        data_payload = getattr(state, "data_payload", {})
-        can_act = data_payload.get("canAct")
-        if can_act is None:
-            can_act = data_payload.get("view", {}).get("canAct")
-        if can_act is None:
-            can_act = data_payload.get("data", {}).get("canAct")
-        if can_act is None:
-            can_act = True
-
         if self.survival_evaluator:
             options.extend(self.survival_evaluator.evaluate(state, memory))
 

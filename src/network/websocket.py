@@ -7,6 +7,7 @@ Tanggung jawab: Menangani koneksi WebSocket terpadu, pemrosesan frame masuk,
 import asyncio
 import json
 import logging
+import time
 import websockets
 from typing import Optional, Any
 from src.models.game_state import GameState
@@ -100,6 +101,22 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
+        is_game_state = False
+        if isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
+                is_game_state = True
+
+        if is_game_state:
+            state = GameState(payload)
+            action = self.brain.think(state)
+            if action:
+                await self.send_action(action)
+            return
+
         frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
 
         if frame_type in ["chat", "whisper", "talk", "broadcast"]:
@@ -109,45 +126,45 @@ class ClawRoyaleWSClient:
             return
 
         elif frame_type == "welcome":
-            decision = payload.get("decision", "")
-            logger.info(f"[WS JOIN] Welcome Frame Decision: {decision}")
+            welcome_msg = ""
+            data_val = payload.get("data")
+            if isinstance(data_val, str):
+                welcome_msg = data_val
+            elif isinstance(data_val, dict):
+                welcome_msg = data_val.get("entryType", "")
+            else:
+                welcome_msg = payload.get("message", "")
+
+            logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
             
-            if decision == "ASK_ENTRY_TYPE":
+            welcome_lower = welcome_msg.lower()
+            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
                 join_payload = {
                     "type": "hello",
                     "entryType": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
                 logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif decision == "ALREADY_IN_GAME":
+            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
                 logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
             return
 
         elif frame_type == "action_result":
-            success = payload.get("data", {}).get("success", False)
-            reason = payload.get("data", {}).get("reason", "None")
+            data_block = payload.get("data", {})
+            success = data_block.get("success", False)
+            reason = data_block.get("reason", "None")
+            cd_rem = data_block.get("cooldownRemainingMs")
+            
+            # Sempurnakan sinkronisasi tracker lokal dengan info timer murni dari server
+            if cd_rem is not None:
+                self.brain.local_cooldown_end = time.time() + (cd_rem / 1000.0)
+                
             if not success:
                 logger.error(f"[WS SERVER_ACK] GAGAL: {reason}")
-                # [REVISI ANTI-SPAM]: Bersihkan paksa rencana planner jika server menolak aksi
                 self.brain.planner.clear(reason=f"Server Reject ({reason})")
             else:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
-
-        is_game_state = False
-        if frame_type in ["agent_view", "turn_advanced"]:
-            is_game_state = True
-        elif isinstance(payload, dict):
-            if "self" in payload:
-                is_game_state = True
-            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-
-        if is_game_state:
-            state = GameState(payload)
-            action = self.brain.think(state)
-            if action:
-                await self.send_action(action)
 
     async def send_action(self, action):
         if not self.websocket or is_ws_closed(self.websocket):
@@ -166,6 +183,11 @@ class ClawRoyaleWSClient:
         try:
             await self.websocket.send(json.dumps(payload))
             logger.info(f"[WS SEND] Mengirim aksi: {action.action_type}")
+            
+            # Blokir mandiri selama 30 detik untuk aksi berat agar tidak pernah ada spam murni
+            if action.action_type not in ["pickup", "equip", "talk"]:
+                self.brain.local_cooldown_end = time.time() + 30.0
+                
         except Exception as e:
             logger.error(f"[WS SEND] Gagal mengirim payload aksi: {str(e)}")
 

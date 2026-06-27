@@ -5,6 +5,7 @@ Tanggung jawab: Entry point berpikir AI, mengintegrasikan memori, seluruh sub-ev
 """
 
 import logging
+import time
 from typing import Optional
 from src.models.game_state import GameState
 from src.models.action import Action
@@ -41,6 +42,23 @@ class Brain:
         )
         
         self.emergency_mode_active = False
+        self.local_cooldown_end = 0.0
+
+    def is_can_act(self, state: GameState) -> bool:
+        """Single Source of Truth untuk memverifikasi apakah bot diizinkan bertindak taktis."""
+        payload = getattr(state, "data_payload", {})
+        
+        c_act = payload.get("canAct")
+        if c_act is None:
+            c_act = payload.get("self", {}).get("canAct")
+        if c_act is None:
+            c_act = payload.get("data", {}).get("canAct")
+            
+        if c_act is not None:
+            return bool(c_act)
+            
+        # Fallback pengaman jika server tidak menyertakan data canAct sama sekali
+        return time.time() >= self.local_cooldown_end
 
     def think(self, state: GameState) -> Action:
         logger.info(f"=== [BRAIN] MEMULAI BERPIKIR TURN {state.turn} ===")
@@ -62,18 +80,17 @@ class Brain:
                 self.emergency_mode_active = False
 
         enemies_in_same_region = [e for e in state.visible_enemies if e.region_id == state.current_region.id and e.is_alive]
+        can_act_status = self.is_can_act(state)
         
-        # [REVISI ANTI-SPAM]: Menghentikan eksekusi fall-through. Jika planner punya aksi tapi sedang menahan (cooldown), kembalikan None!
         if self.planner.has_actions() and not self.emergency_mode_active:
             if enemies_in_same_region:
                 logger.warning("[BRAIN] Musuh terdeteksi di area yang sama selama eksekusi rencana berantai. Membersihkan Planner!")
                 self.planner.clear(reason="Enemy entered current region")
             else:
-                return self.planner.get_next_action(state)
+                return self.planner.get_next_action(can_act_status)
 
-        # Hanya lakukan evaluasi jika planner benar-benar kosong
         if not self.planner.has_actions():
-            candidates = self.evaluator.evaluate_all_options(state, self.memory)
+            candidates = self.evaluator.evaluate_all_options(state, self.memory, can_act_status)
             candidates = GoalSelector.select_goal_and_adjust(candidates, state)
             final_action = self.selector.validate_and_select(candidates, state)
             
@@ -82,6 +99,6 @@ class Brain:
                     self.memory.record_retreat_movement(state.current_region.id, state.turn)
                 self.planner.add_actions([final_action])
                 
-            return self.planner.get_next_action(state)
+            return self.planner.get_next_action(can_act_status)
 
         return None
