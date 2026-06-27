@@ -18,7 +18,8 @@ from src.config.constants import (
 
 logger = logging.getLogger("ClawRoyale.WebSocket")
 
-class WebSocketClient:
+# [REVISI NAMA KELAS]: Diubah menjadi ClawRoyaleWSClient agar sinkron dengan run.py
+class ClawRoyaleWSClient:
     def __init__(self):
         self.brain = Brain()
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
