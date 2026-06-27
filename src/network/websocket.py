@@ -115,9 +115,27 @@ class ClawRoyaleWSClient:
 
         if is_game_state:
             state = GameState(payload)
+            
+            # --- PENANGANAN AGEN GUGUR (RE-QUEUE CEPAT) ---
+            if not state.is_player_alive:
+                # 1. Bersihkan sisa antrean aksi agar tidak terbawa ke game selanjutnya
+                self.brain.planner.clear(reason="Agent Gugur (HP 0)")
+                
+                # 2. Cetak log GUI terakhir yang menunjukkan status DEAD
+                try:
+                    GUILogger.log_turn(state, None, getattr(self, 'can_act', True))
+                except Exception as e:
+                    logger.error(f"[GUI ERROR] Terjadi kerusakan pada src/network/gui_logger.py:\n{traceback.format_exc()}")
+                
+                # 3. Tutup soket aktif secara teratur untuk memaksa sistem keluar dari game saat ini
+                logger.info("[WS] Agen terdeteksi GUGUR. Menutup soket untuk otomatis mengantre ke room baru...")
+                if self.websocket and not is_ws_closed(self.websocket):
+                    asyncio.create_task(self.websocket.close())
+                return
+            # ----------------------------------------------
+            
             action = self.brain.think(state)
             
-            # [REVISI DEBUG GUI]: Menggunakan getattr untuk memastikan can_act diteruskan dengan aman
             try:
                 GUILogger.log_turn(state, action, getattr(self, 'can_act', True))
             except Exception as e:
