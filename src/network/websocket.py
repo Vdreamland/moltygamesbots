@@ -19,7 +19,6 @@ from src.config.constants import (
 logger = logging.getLogger("ClawRoyale.WebSocket")
 
 def is_ws_closed(ws: Any) -> bool:
-    """Cek status tutup soket yang kompatibel dengan semua versi websockets."""
     if ws is None:
         return True
     if hasattr(ws, "state"):
@@ -40,11 +39,15 @@ class ClawRoyaleWSClient:
         uri = f"{WS_BASE_URL}/join"
         
         api_key_active = API_KEY
+        x_version = "1.0.0"
+        
         if self.api_client and hasattr(self.api_client, "session"):
             api_key_active = self.api_client.session.headers.get("X-API-Key", API_KEY)
+            x_version = self.api_client.session.headers.get("X-Version", "1.0.0")
 
         headers = {
-            "X-API-Key": api_key_active
+            "X-API-Key": api_key_active,
+            "X-Version": x_version
         }
 
         connect_kwargs = {}
@@ -97,53 +100,26 @@ class ClawRoyaleWSClient:
             logger.error("[WS] Gagal mendekode JSON frame masuk.")
             return
 
-        is_game_state = False
-        if isinstance(payload, dict):
-            if "self" in payload:
-                is_game_state = True
-            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
-                is_game_state = True
-            elif "data" in payload and isinstance(payload["data"], dict) and "self" in payload["data"]:
-                is_game_state = True
+        frame_type = payload.get("type", "").lower()
 
-        if is_game_state:
-            state = GameState(payload)
-            action = self.brain.think(state)
-            if action:
-                await self.send_action(action)
-            return
-
-        frame_type = payload.get("type", "").lower() if isinstance(payload, dict) else ""
-
-        if frame_type in ["chat", "whisper"]:
+        if frame_type in ["chat", "whisper", "talk", "broadcast"]:
             sender = payload.get("sender", "Unknown")
             content = payload.get("message", "")
             logger.info(f"\n[WS RECEIVE {frame_type.upper()}] Dari: {sender} | Pesan: '{content}'\n")
             return
 
         elif frame_type == "welcome":
-            welcome_msg = ""
-            data_val = payload.get("data")
-            if isinstance(data_val, str):
-                welcome_msg = data_val
-            elif isinstance(data_val, dict):
-                welcome_msg = data_val.get("entryType", "")
-            else:
-                welcome_msg = payload.get("message", "")
-
-            logger.info(f"[WS JOIN] Welcome Frame: {welcome_msg}")
+            decision = payload.get("decision", "")
+            logger.info(f"[WS JOIN] Welcome Frame Decision: {decision}")
             
-            welcome_lower = welcome_msg.lower()
-            if "ask_entry_type" in welcome_lower or "choose entrytype" in welcome_lower or "both free and paid" in welcome_lower:
-                # [REVISI HANDSHAKE MURNI]: Gunakan skema Flat JSON persis seperti spesifikasi lobi API server
-                # 'type' dan 'entryType' berada pada posisi root sejajar
+            if decision == "ASK_ENTRY_TYPE":
                 join_payload = {
-                    "type": "entryType",
+                    "type": "hello",
                     "entryType": "free"
                 }
                 await self.websocket.send(json.dumps(join_payload))
-                logger.info("[WS JOIN] Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
-            elif "active game found" in welcome_lower or welcome_msg == "ALREADY_IN_GAME":
+                logger.info("[WS JOIN] Mengirim Hello Frame. Memilih tipe ruangan: free. Memasuki Antrean Matchmaking...")
+            elif decision == "ALREADY_IN_GAME":
                 logger.info("[WS JOIN] Agen berada di dalam game aktif. Menunggu Game State...")
             return
 
@@ -155,6 +131,21 @@ class ClawRoyaleWSClient:
             else:
                 logger.info("[WS SERVER_ACK] Aksi BERHASIL diproses server.")
             return
+
+        is_game_state = False
+        if frame_type in ["agent_view", "turn_advanced"]:
+            is_game_state = True
+        elif isinstance(payload, dict):
+            if "self" in payload:
+                is_game_state = True
+            elif "view" in payload and isinstance(payload["view"], dict) and "self" in payload["view"]:
+                is_game_state = True
+
+        if is_game_state:
+            state = GameState(payload)
+            action = self.brain.think(state)
+            if action:
+                await self.send_action(action)
 
     async def send_action(self, action):
         if not self.websocket or is_ws_closed(self.websocket):
