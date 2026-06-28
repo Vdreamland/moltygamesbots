@@ -1,7 +1,7 @@
 """
 src/network/api.py
 Tanggung jawab: Mengelola handshake versi API ke server (GET /api/version),
-               mengecek kredensial profil (GET /api/profile),
+               mengecek kredensial profil (GET /api/accounts/me),
                dan memelihara HTTP session asinkronus (aiohttp).
 """
 
@@ -49,16 +49,17 @@ class ClawRoyaleAPIClient:
 
     async def get_profile(self) -> Optional[Dict[str, Any]]:
         """
-        Mengambil detail profil agen (GET /api/profile) untuk verifikasi API Key.
+        Mengambil detail profil agen (GET /api/accounts/me) untuk verifikasi API Key.
         """
-        url = f"{BASE_URL}/profile"
+        # [PERBAIKAN]: Menggunakan endpoint resmi sesuai dokumentasi ClawRoyale: /accounts/me
+        url = f"{BASE_URL}/accounts/me"
         try:
             # Pastikan API Key terpasang kuat di header sebelum menembak
             self.session.headers["X-API-Key"] = API_KEY
             async with self.session.get(url, timeout=10) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Kembalikan payload data profil aslinya
+                    # Profil bisa di dalam sub-objek 'data' atau flat
                     profile_data = data.get("data", data)
                     return profile_data
                 elif response.status == 401:
