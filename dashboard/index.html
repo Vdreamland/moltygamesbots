@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawRoyale - Live Telemetry Dashboard</title>
+    <!-- Tailwind CSS & FontAwesome Icons -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #0b0f19; }
+        .glow-emerald { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+        .glow-indigo { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
+        .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body class="p-6 font-sans text-slate-100">
+
+    <!-- TOP HEADER BAR -->
+    <div class="flex flex-col md:flex-row justify-between items-center bg-slate-900 border border-slate-800 p-5 rounded-xl mb-6 shadow-md glow-indigo">
+        <div class="flex items-center mb-4 md:mb-0">
+            <div class="bg-indigo-600 p-3 rounded-lg mr-4">
+                <i class="fa-solid fa-robot text-2xl text-white"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wider text-indigo-400">CLAWROYALE AGENT</h1>
+                <p id="game-id" class="text-xs text-slate-500 font-mono">Game ID: Waiting for data...</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div class="text-right">
+                <span id="turn-num" class="bg-indigo-950 text-indigo-400 border border-indigo-800 text-lg font-extrabold px-4 py-1.5 rounded-lg font-mono">TURN 00</span>
+            </div>
+            <div class="flex items-center bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
+                <span id="status-indicator" class="w-3 h-3 rounded-full bg-red-500 mr-2.5"></span>
+                <span id="status-text" class="text-xs font-bold text-slate-400 tracking-widest font-mono">DISCONNECTED</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN BODY GRID -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- LEFT COLUMN: STATUS & RADAR -->
+        <div class="space-y-6">
+            
+            <!-- VITAL HEALTH & ENERGY -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-4 uppercase"><i class="fa-solid fa-heart-pulse mr-2 text-rose-500"></i> Vital Sign</h2>
+                
+                <!-- HP Bar -->
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs font-semibold mb-1.5">
+                        <span class="text-rose-400">Health (HP)</span>
+                        <span id="hp-text" class="font-mono text-rose-300">100/100 HP</span>
+                    </div>
+                    <div class="w-full bg-slate-950 rounded-full h-3.5 border border-slate-800 overflow-hidden">
+                        <div id="hp-bar" class="bg-gradient-to-r from-rose-600 to-emerald-500 h-full rounded-full transition-all duration-500" style="width: 100%"></div>
+                    </div>
+                </div>
+
+                <!-- EP Bar -->
+                <div>
+                    <div class="flex justify-between text-xs font-semibold mb-1.5">
+                        <span class="text-cyan-400">Energy (EP)</span>
+                        <span id="ep-text" class="font-mono text-cyan-300">10/10 EP</span>
+                    </div>
+                    <div class="w-full bg-slate-950 rounded-full h-3.5 border border-slate-800 overflow-hidden">
+                        <div id="ep-bar" class="bg-gradient-to-r from-blue-600 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PLAYER STATS -->
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl text-center">
+                    <span class="text-xs font-bold text-slate-500 tracking-wider block mb-1">DEFENSE</span>
+                    <span id="stat-def" class="text-2xl font-black text-blue-400 font-mono">0</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl text-center">
+                    <span class="text-xs font-bold text-slate-500 tracking-wider block mb-1">KILLS</span>
+                    <span id="stat-kills" class="text-2xl font-black text-rose-500 font-mono">0</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl text-center">
+                    <span class="text-xs font-bold text-slate-500 tracking-wider block mb-1">ALERT</span>
+                    <span id="alert-gauge" class="text-lg font-black text-amber-500 font-mono mt-1 block">0/10</span>
+                </div>
+            </div>
+
+            <!-- ACTIVE EQUIPMENT -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-4 uppercase"><i class="fa-solid fa-shield-halved mr-2 text-indigo-400"></i> Equipped Slots</h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <span class="text-xs text-slate-500 font-bold"><i class="fa-solid fa-gun mr-1.5 text-indigo-400"></i> WEAPON</span>
+                        <span id="equipped-weapon" class="text-sm font-bold text-slate-200">None</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <span class="text-xs text-slate-500 font-bold"><i class="fa-solid fa-shirt mr-1.5 text-indigo-400"></i> ARMOR</span>
+                        <span id="equipped-armor" class="text-sm font-bold text-slate-200">None</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER COLUMN: RADAR, MAP & NEXT PLAN -->
+        <div class="space-y-6">
+            
+            <!-- CURRENT LOCATION -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm glow-emerald">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-2 uppercase"><i class="fa-solid fa-location-crosshairs mr-2 text-emerald-400"></i> Current Location</h2>
+                <div class="flex justify-between items-baseline mb-3">
+                    <span id="location-name" class="text-2xl font-black text-emerald-400 tracking-wide">Waiting...</span>
+                    <span id="location-id" class="text-xs text-slate-500 font-mono">(None)</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-950 p-3 rounded-lg border border-slate-800">
+                    <span class="text-xs font-bold text-slate-500">STORM STATUS:</span>
+                    <span id="badai-status" class="text-xs font-extrabold px-3 py-1 rounded bg-slate-900 text-slate-400">UNKNOWN</span>
+                </div>
+            </div>
+
+            <!-- MAP CONNECTIONS (FOG OF WAR SENSITIVE) -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-4 uppercase"><i class="fa-solid fa-route mr-2 text-indigo-400"></i> Map Connections</h2>
+                <div id="connections" class="flex flex-wrap gap-2">
+                    <span class="text-slate-500 text-sm italic">Waiting for discovery...</span>
+                </div>
+            </div>
+
+            <!-- DECISION MAKER -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-4 uppercase"><i class="fa-solid fa-brain mr-2 text-indigo-400"></i> AI Decision</h2>
+                <div class="bg-slate-950 p-4 rounded-lg border border-slate-800 space-y-3 mb-3">
+                    <div class="flex justify-between">
+                        <span class="text-xs font-bold text-slate-500">DECISION:</span>
+                        <span id="cooldown-status" class="text-xs font-bold text-amber-400 animate-pulse">Waiting...</span>
+                    </div>
+                    <div class="text-lg font-black text-indigo-400 tracking-wide" id="decision-header">NONE</div>
+                    <div class="text-xs text-slate-400 font-mono" id="decision-detail">Waiting for action...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: INVENTORY & GROUND LOOT -->
+        <div class="space-y-6">
+            
+            <!-- INVENTORY BAG -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm h-[260px] flex flex-col">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-4 uppercase"><i class="fa-solid fa-bag-shopping mr-2 text-indigo-400"></i> Inventory Bag</h2>
+                <ul id="bag-items" class="space-y-1.5 overflow-y-auto flex-1 pr-1 text-slate-300">
+                    <li class="text-slate-500 text-sm italic">Empty</li>
+                </ul>
+            </div>
+
+            <!-- GROUND LOOT IN CURRENT REGION -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm h-[260px] flex flex-col">
+                <h2 class="text-sm font-bold tracking-widest text-slate-400 mb-4 uppercase"><i class="fa-solid fa-box-open mr-2 text-amber-500"></i> Ground Loot</h2>
+                <ul id="ground-items" class="space-y-1.5 overflow-y-auto flex-1 pr-1 text-slate-300">
+                    <li class="text-slate-500 text-sm italic">Empty</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- BOTTOM ROW: AUDIT & REASONING LOG -->
+    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl mt-6 shadow-md h-[300px] flex flex-col">
+        <h2 class="text-sm font-bold tracking-widest text-indigo-400 mb-4 uppercase"><i class="fa-solid fa-list-check mr-2"></i> Tactical Audit & AI Reasoning Log</h2>
+        <div class="overflow-y-auto flex-1 border border-slate-800 rounded-lg bg-slate-950">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-900 text-slate-400 text-xs font-bold tracking-wider border-b border-slate-800 sticky top-0">
+                        <th class="p-3 w-28">TIMESTAMP</th>
+                        <th class="p-3 w-24">TURN</th>
+                        <th class="p-3 w-32">ACTION</th>
+                        <th class="p-3 w-[30%]">DETAIL</th>
+                        <th class="p-3">AI THOUGHT / REASONING</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-log-body" class="text-xs">
+                    <tr>
+                        <td colspan="5" class="p-4 text-center text-slate-500 italic">Waiting for turn execution telemetry...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
