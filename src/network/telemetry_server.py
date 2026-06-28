@@ -33,7 +33,6 @@ async def handler(websocket):
 
 async def start_telemetry_server(port: int = 8000):
     global server_instance
-    logger.info(f"[TELEMETRY] Memulai Server Telemetri Lokal di ws://127.0.0.1:{port}...")
     try:
         # Menjalankan WebSocket Server lokal
         async with websockets.serve(handler, "127.0.0.1", port) as server:
