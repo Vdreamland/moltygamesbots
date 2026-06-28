@@ -1,0 +1,64 @@
+/*
+dashboard/style.css
+Tanggung jawab: Memberikan visualisasi asri, glow effect, custom scrollbar,
+               dan animasi transisi yang modern untuk UI Web Dashboard.
+*/
+
+/* Cyberpunk Glow effect classes */
+.glow-emerald {
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
+    transition: box-shadow 0.3s ease-in-out;
+}
+.glow-emerald:hover {
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.4);
+}
+
+.glow-indigo {
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
+    transition: box-shadow 0.3s ease-in-out;
+}
+.glow-indigo:hover {
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.4);
+}
+
+.glow-red {
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+    transition: box-shadow 0.3s ease-in-out;
+}
+.glow-red:hover {
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.4);
+}
+
+/* Custom scrollbars for clean aesthetics */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a; /* slate 900 */
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155; /* slate 700 */
+    border-radius: 4px;
+    transition: background 0.2s ease-in-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569; /* slate 600 */
+}
+
+/* Custom pulsing animation for warnings */
+@keyframes pulse-slow {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: .4;
+    }
+}
+
+.pulse-slow {
+    animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

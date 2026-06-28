@@ -88,3 +88,9 @@ WEIGHT_GOAL_EXPLORE = 50.0
 # Bonus Weights untuk Inventory Management
 BONUS_WEIGHT_EQUIP = 150.0
 BONUS_WEIGHT_CONSUMABLE = 120.0
+
+# ==============================================================================
+# WEB DASHBOARD CONFIG (Pancaran Telemetri Visual ke Browser)
+# ==============================================================================
+WEB_DASHBOARD_MODE = True
+TELEMETRY_PORT = 8000
