@@ -1,64 +1,88 @@
 /*
 dashboard/style.css
-Tanggung jawab: Memberikan visualisasi asri, glow effect, custom scrollbar,
-               dan animasi transisi yang modern untuk UI Web Dashboard.
+Tanggung jawab: Estetika Visual Dashboard (Full Version).
+               Mengatur tema gelap, efek menyala (glow), dan scrollbar kustom.
 */
 
-/* Cyberpunk Glow effect classes */
-.glow-emerald {
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
-    transition: box-shadow 0.3s ease-in-out;
-}
-.glow-emerald:hover {
-    box-shadow: 0 0 25px rgba(16, 185, 129, 0.4);
-}
-
-.glow-indigo {
-    box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
-    transition: box-shadow 0.3s ease-in-out;
-}
-.glow-indigo:hover {
-    box-shadow: 0 0 25px rgba(99, 102, 241, 0.4);
+:root {
+    --bg-dark: #0b0f19;
+    --panel-dark: #111827;
+    --border-slate: #1e293b;
+    --glow-indigo: rgba(99, 102, 241, 0.3);
+    --glow-emerald: rgba(16, 185, 129, 0.2);
 }
 
-.glow-red {
-    box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
-    transition: box-shadow 0.3s ease-in-out;
-}
-.glow-red:hover {
-    box-shadow: 0 0 25px rgba(239, 68, 68, 0.4);
+body {
+    background-color: var(--bg-dark);
+    color: #e2e8f0;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
 }
 
-/* Custom scrollbars for clean aesthetics */
+/* Custom Scrollbar for Chrome/Safari/Edge */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #0f172a; /* slate 900 */
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #334155; /* slate 700 */
-    border-radius: 4px;
-    transition: background 0.2s ease-in-out;
+    background: #334155;
+    border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #475569; /* slate 600 */
+    background: #475569;
 }
 
-/* Custom pulsing animation for warnings */
-@keyframes pulse-slow {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: .4;
-    }
+/* Glowing Panels */
+.glow-indigo {
+    box-shadow: 0 4px 20px -5px var(--glow-indigo);
+    border-color: #312e81;
 }
 
-.pulse-slow {
-    animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.glow-emerald {
+    box-shadow: 0 4px 20px -5px var(--glow-emerald);
+    border-color: #064e3b;
+}
+
+/* Animation Pulsing for Standby/Cooldown */
+@keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.animate-pulse-soft {
+    animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Tooltip & Text Scale fix */
+.text-xxs {
+    font-size: 0.65rem;
+}
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+tr:hover td {
+    background-color: rgba(30, 41, 59, 0.5);
+}
+
+td {
+    transition: background-color 0.2s ease;
+}
+
+/* Layout Compact Fixes */
+.scroll-bar {
+    scrollbar-gutter: stable;
 }

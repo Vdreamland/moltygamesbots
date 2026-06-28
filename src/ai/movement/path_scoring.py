@@ -47,8 +47,8 @@ class PathScoring:
                 score -= 100.0 
 
         # 5. [PERBAIKAN ANTI-STUCK]: Baseline Score
-        # Jika EP sehat (>= 8), berikan dorongan dasar agar skor total wilayah aman
-        # tidak berakhir di angka 0 atau negatif, sehingga bot tidak terjebak REST loop.
+        # Jika EP sehat (>= 8), berikan dorongan dasar agar bot selalu melangkah
+        # daripada diam mematung (REST) saat tidak ada loot di sekitarnya.
         if player.ep >= 8:
             score += 15.0
 
