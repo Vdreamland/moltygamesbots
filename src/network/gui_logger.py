@@ -1,15 +1,18 @@
 """
 src/network/gui_logger.py
-Tanggung jawab: Memformat dan mencetak visualisasi data taktis agen per turn 
-               dalam bentuk log bergulir (rolling logs) yang terstruktur, rapi, dan padat angka.
-               Mendukung rincian tas, pertahanan DEF (Armor), jumlah Kills, Senjata, dan Zirah terpasang.
-               Menerapkan lokalisasi nama region otomatis (Fog of War) tanpa penginputan manual.
-               Kini mendukung penyaringan item terpasang dari tas agar sinkron 100% dengan GUI game.
+Tanggung jawab: Memformat dan mengalirkan data taktis agen per turn (telemetri)
+               ke Web Dashboard lokal, serta mencetak satu baris log informatif di konsol.
 """
 
+import logging
+import asyncio
 from typing import Optional
 from src.models.game_state import GameState
 from src.models.action import Action
+from src.config.constants import WEB_DASHBOARD_MODE
+from src.network.telemetry_server import broadcast_telemetry
+
+logger = logging.getLogger("ClawRoyale.GUILogger")
 
 class GUILogger:
     # Memori peta lokal yang akan dipelajari secara mandiri oleh bot saat bermain
@@ -54,18 +57,15 @@ class GUILogger:
                 thought = '"Sedang menunggu cooldown aksi selesai"'
             cooldown_status = "Menunggu Cooldown (30s)" if not can_act else "SIAP BERTINDAK!"
         
-        # Ambil ID senjata dan zirah yang sedang di-equip untuk penyaringan
+        # Format daftar isi tas
+        bag_counts = {}
         eq_weapon_id = player.equipped_weapon.id if player.equipped_weapon else None
         eq_armor_id = player.equipped_armor.id if player.equipped_armor else None
-
-        # [PERBAIKAN SINKRONISASI TAS]: Pengelompokan daftar isi tas dengan menyaring item terpasang agar tidak double count
-        bag_counts = {}
         actual_bag_slots = 0
+        
         for item in player.inventory:
-            # Jika item sedang di-equip di badan, jangan masukkan ke daftar visual isi tas
             if item.id in [eq_weapon_id, eq_armor_id]:
                 continue
-            
             itype = getattr(item, 'item_type', getattr(item, 'type', 'item'))
             key = f"{item.name} ({itype})"
             bag_counts[key] = bag_counts.get(key, 0) + 1
@@ -73,7 +73,7 @@ class GUILogger:
             
         bag_items_desc = ", ".join([f"{key} x{count}" for key, count in bag_counts.items()]) if bag_counts else "None"
 
-        # Pengelompokan daftar barang di tanah agar rapi
+        # Format loot di tanah
         ground_items = getattr(region, "items", [])
         ground_counts = {}
         for item in ground_items:
@@ -96,21 +96,53 @@ class GUILogger:
         enemies_same_region = sum(1 for e in state.visible_enemies if e.region_id == region.id)
         enemies_outside_region = len(state.visible_enemies) - enemies_same_region
 
-        # Cetak blok per turn yang bersih, ringkas, dan mudah di-scroll
-        print("\n" + "-"*65)
-        print(f"[TURN {state.turn:02d}] Lokasi: {region.name} ({region.id[:8]}...)")
-        print("-"*65)
-        # SINKRONISASI VISUAL: Menampilkan stats fisik lengkap (Tas disinkronkan ke actual_bag_slots)
-        print(f" Stat Fisik : HP: {player.hp}/{player.max_hp} | EP: {player.ep}/{player.max_ep} | Tas: {actual_bag_slots}/10 | DEF: {player.defense} | Kills: {player.kills}")
-        print(f" Isi Tas    : {bag_items_desc}")
-        print(f" Senjata    : {player.equipped_weapon.name if player.equipped_weapon else 'None'}")
-        print(f" Zirah      : {player.equipped_armor.name if player.equipped_armor else 'None'}")
-        print(f" Radar      : Musuh Terdeteksi: {len(state.visible_enemies)} (Satu Area: {enemies_same_region} | Luar Area: {enemies_outside_region})")
-        print(f" Alert Ruin : {alert_desc}")
-        print(f" Loot Tanah : {ground_items_desc}")
-        print(f" Koneksi    : {connections_desc}")
-        print(f" Badai      : {danger_status}")
-        print(f" Keputusan  : {act_type} -> {act_desc}")
-        print(f" Alasan AI  : {thought}")
-        print(f" Status Act : {cooldown_status}")
-        print("-"*65 + "\n")
+        # --------------------------------======================================
+        # [KONSOL LOG SINGKAT - HEADLESS MODE - BARU]
+        # --------------------------------======================================
+        logger.info(f"[TELEMETRY] [TURN {state.turn:02d}] Lokasi: {region.name} | HP: {player.hp}/{player.max_hp} | EP: {player.ep}/{player.max_ep} | Keputusan: {act_type} -> {act_desc}")
+
+        # ======================================================================
+        # [TELEMETRY STREAMING - BARU]
+        # ======================================================================
+        if WEB_DASHBOARD_MODE:
+            telemetry_payload = {
+                "turn": state.turn,
+                "game_id": state.game_id,
+                "location_name": region.name,
+                "location_id": region.id,
+                "hp": player.hp,
+                "max_hp": player.max_hp,
+                "ep": player.ep,
+                "max_ep": player.max_ep,
+                "defense": player.defense,
+                "kills": player.kills,
+                "weapon": player.equipped_weapon.name if player.equipped_weapon else "None",
+                "armor": player.equipped_armor.name if player.equipped_armor else "None",
+                "alert_gauge": player.alert_gauge,
+                "badai_status": danger_status,
+                "bag_items": [
+                    {"name": item.name, "type": getattr(item, "item_type", getattr(item, "type", "item")), "tier": item.tier}
+                    for item in player.inventory if item.id not in [eq_weapon_id, eq_armor_id]
+                ],
+                "ground_items": [
+                    {"name": item.name, "type": getattr(item, "item_type", getattr(item, "type", "item")), "tier": item.tier}
+                    for item in ground_items
+                ],
+                "connections": [
+                    {"id": r_id, "name": GUILogger.REGION_MAP.get(r_id, f"Sektor-{r_id[:4].upper()}")}
+                    for r_id in region.connections
+                ],
+                "decision": act_type,
+                "decision_detail": act_desc,
+                "thought": thought,
+                "cooldown_status": cooldown_status,
+                "can_act": can_act
+            }
+            
+            # Kirim secara asinkron ke server telemetri lokal tanpa memblokir perulangan utama
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(broadcast_telemetry(telemetry_payload))
+            except Exception:
+                pass
