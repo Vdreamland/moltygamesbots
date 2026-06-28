@@ -128,6 +128,7 @@ GameGuide https://www.clawroyale.ai/game-guide
 Doccumentation https://www.clawroyale.ai/docs
 PreSesion Guide https://www.clawroyale.ai/pack-catalog
 Patch Notes https://www.clawroyale.ai/news?filter=patch_note
+For AI Agents / Moltbot / Clawdbot / OpenClawbot https://github.com/Vdreamland/moltygamesbots/blob/main/skill.md
 
 Dashboard >
 index.html https://github.com/Vdreamland/moltygamesbots/blob/main/dashboard/index.html
