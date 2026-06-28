@@ -1,9 +1,27 @@
 """
 src/config/constants.py
 Tanggung jawab: Seluruh konfigurasi global (weight, threshold, utility, reward, penalty, cooldown, dll).
+               Dilengkapi parser berkas .env bawaan untuk mengambil API_KEY tanpa dependensi eksternal.
 """
 
 import os
+
+# ==============================================================================
+# PURE-PYTHON .ENV LOADER (Mencegah Dependency Error)
+# ==============================================================================
+# constants.py ada di src/config/constants.py, .env ada di root folder (3 tingkat ke atas)
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(root_dir, ".env")
+
+if os.path.exists(env_path):
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                os.environ[key.strip()] = val.strip().strip("'").strip('"')
 
 # ==============================================================================
 # API & CONNECTION CONFIG
