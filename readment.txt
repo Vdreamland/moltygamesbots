@@ -1,6 +1,11 @@
 src/
+├── dashboard/
+│   ├── app.js
+│   ├── index.html
+│   └── style.css
 │
 ├── network/
+│   ├── telemetry_server.py
 │   ├── websocket.py
 │   ├── frame_processor.py
 │   ├── gui_logger.py
@@ -57,6 +62,7 @@ src/
 │   └── constants.py
 │
 └── run.py
+
 link url
 
 ai>combat>
@@ -110,7 +116,20 @@ network>api.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/networ
 network>gui_logger.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/gui_logger.py
 network>websocket.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/websocket.py
 network>frame_processor.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/frame_processor.py
+telemetry_server.py https://github.com/Vdreamland/moltygamesbots/blob/main/src/network/telemetry_server.py
 
 readment.txt https://github.com/Vdreamland/moltygamesbots/blob/main/readment.txt
 .env https://github.com/Vdreamland/moltygamesbots/blob/main/.env
 run.py https://github.com/Vdreamland/moltygamesbots/blob/main/run.py
+
+Dokumentasi resmi
+PlayGuide https://www.clawroyale.ai/guide
+GameGuide https://www.clawroyale.ai/game-guide
+Doccumentation https://www.clawroyale.ai/docs
+PreSesion Guide https://www.clawroyale.ai/pack-catalog
+Patch Notes https://www.clawroyale.ai/news?filter=patch_note
+
+Dashboard >
+index.html https://github.com/Vdreamland/moltygamesbots/blob/main/dashboard/index.html
+app.js https://github.com/Vdreamland/moltygamesbots/blob/main/dashboard/app.js
+style.css https://github.com/Vdreamland/moltygamesbots/blob/main/dashboard/style.css
