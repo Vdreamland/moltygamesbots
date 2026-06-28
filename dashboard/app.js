@@ -1,163 +1,103 @@
 const wsUri = "ws://127.0.0.1:8000";
 let websocket;
+let auditHistory = [];
 
 function connect() {
     websocket = new WebSocket(wsUri);
     
-    websocket.onopen = function(evt) {
-        console.log("Connected to Telemetry Server");
-        document.getElementById("status-indicator").classList.remove("bg-red-500");
-        document.getElementById("status-indicator").classList.add("bg-emerald-500", "animate-pulse");
-        document.getElementById("status-text").innerText = "CONNECTED";
-        document.getElementById("status-text").classList.remove("text-slate-400");
-        document.getElementById("status-text").classList.add("text-emerald-400");
+    websocket.onopen = () => {
+        const box = document.getElementById("status-box");
+        box.innerHTML = '<i class="fa-solid fa-circle mr-1 animate-pulse"></i> LIVE';
+        box.className = "bg-emerald-950 px-3 py-1 rounded border border-emerald-800 text-[9px] font-bold text-emerald-400";
     };
-    
-    websocket.onclose = function(evt) {
-        console.log("Disconnected from Telemetry Server");
-        document.getElementById("status-indicator").classList.remove("bg-emerald-500", "animate-pulse");
-        document.getElementById("status-indicator").classList.add("bg-red-500");
-        document.getElementById("status-text").innerText = "DISCONNECTED";
-        document.getElementById("status-text").classList.remove("text-emerald-400");
-        document.getElementById("status-text").classList.add("text-slate-400");
-        
-        // Auto-reconnect setiap 3 detik
-        setTimeout(connect, 3000);
+
+    websocket.onclose = () => {
+        const box = document.getElementById("status-box");
+        box.innerHTML = '<i class="fa-solid fa-circle mr-1"></i> OFFLINE';
+        box.className = "bg-red-950 px-3 py-1 rounded border border-red-800 text-[9px] font-bold text-red-400";
+        setTimeout(connect, 2000);
     };
-    
-    websocket.onmessage = function(evt) {
+
+    websocket.onmessage = (evt) => {
         const data = JSON.parse(evt.data);
-        updateDashboard(data);
-    };
-    
-    websocket.onerror = function(evt) {
-        console.error("Telemetry websocket error:", evt);
+        updateUI(data);
     };
 }
 
-function updateDashboard(data) {
-    // 1. Update Header & IDs
-    document.getElementById("turn-num").innerText = "TURN " + String(data.turn).padStart(2, '0');
-    document.getElementById("game-id").innerText = "Game ID: " + data.game_id;
-    document.getElementById("location-name").innerText = data.location_name;
-    document.getElementById("location-id").innerText = "(" + data.location_id.substring(0, 8) + "...)";
+function updateUI(d) {
+    document.getElementById("turn-num").innerText = "T-" + String(d.turn).padStart(2, '0');
+    document.getElementById("game-id-text").innerText = "Match: " + d.game_id.substring(0, 13) + "...";
+    document.getElementById("location-name").innerText = d.location_name;
     
-    // 2. HP Bar & Text
-    const hpPercent = (data.hp / data.max_hp) * 100;
-    document.getElementById("hp-bar").style.width = hpPercent + "%";
-    document.getElementById("hp-text").innerText = `${data.hp}/${data.max_hp} HP`;
+    document.getElementById("hp-text").innerText = `${d.hp}/${d.max_hp}`;
+    document.getElementById("hp-bar").style.width = (d.hp / d.max_hp * 100) + "%";
+    document.getElementById("ep-text").innerText = `${d.ep}/${d.max_ep}`;
+    document.getElementById("ep-bar").style.width = (d.ep / d.max_ep * 100) + "%";
     
-    // 3. EP Bar & Text
-    const epPercent = (data.ep / data.max_ep) * 100;
-    document.getElementById("ep-bar").style.width = epPercent + "%";
-    document.getElementById("ep-text").innerText = `${data.ep}/${data.max_ep} EP`;
+    document.getElementById("stat-def-kills").innerText = `${d.defense} / ${d.kills}`;
+    document.getElementById("alert-gauge").innerText = `${d.alert_gauge}/10`;
+    document.getElementById("badai-status").innerText = "STORM: " + d.badai_status;
     
-    // 4. Update Stats & Equipment
-    document.getElementById("stat-def").innerText = data.defense;
-    document.getElementById("stat-kills").innerText = data.kills;
-    document.getElementById("equipped-weapon").innerText = data.weapon;
-    document.getElementById("equipped-armor").innerText = data.armor;
-    document.getElementById("alert-gauge").innerText = data.alert_gauge + "/10";
-    document.getElementById("badai-status").innerText = data.badai_status;
-    
-    // Status Badai Color
-    const badaiEl = document.getElementById("badai-status");
-    badaiEl.className = "text-xs font-extrabold px-3 py-1 rounded ";
-    if (data.badai_status === "AMAN") {
-        badaiEl.classList.add("bg-emerald-950", "text-emerald-400");
-    } else {
-        badaiEl.classList.add("bg-red-950", "text-red-400", "animate-pulse");
-    }
-    
-    // 5. Bag Items (Grouped Visual)
-    const bagList = document.getElementById("bag-items");
-    bagList.innerHTML = "";
-    if (data.bag_items.length === 0) {
-        bagList.innerHTML = `<li class="text-slate-500 text-sm italic py-2 text-center">Tas Kosong</li>`;
-    } else {
-        const counts = {};
-        data.bag_items.forEach(item => {
-            const key = `${item.name} (${item.type})`;
-            counts[key] = (counts[key] || 0) + 1;
-        });
-        Object.keys(counts).forEach(key => {
-            bagList.innerHTML += `
-                <li class="flex justify-between items-center bg-slate-950 p-2 rounded-lg text-xs font-semibold mb-1 border border-slate-800">
-                    <span>${key}</span>
-                    <span class="bg-indigo-600 text-[10px] px-2 py-0.5 rounded-full font-bold">x${counts[key]}</span>
-                </li>`;
-        });
-    }
-    
-    // 6. Ground Loot Items (Grouped Visual)
-    const groundList = document.getElementById("ground-items");
-    groundList.innerHTML = "";
-    if (data.ground_items.length === 0) {
-        groundList.innerHTML = `<li class="text-slate-500 text-sm italic py-2 text-center">Tidak ada barang</li>`;
-    } else {
-        const counts = {};
-        data.ground_items.forEach(item => {
-            const key = `${item.name} (${item.type})`;
-            counts[key] = (counts[key] || 0) + 1;
-        });
-        Object.keys(counts).forEach(key => {
-            groundList.innerHTML += `
-                <li class="flex justify-between items-center bg-slate-950 p-2 rounded-lg text-xs font-semibold mb-1 border border-slate-800">
-                    <span>${key}</span>
-                    <span class="bg-amber-600 text-[10px] px-2 py-0.5 rounded-full font-bold">x${counts[key]}</span>
-                </li>`;
-        });
-    }
-    
-    // 7. Connections (Fog of War Sektor)
-    const connList = document.getElementById("connections");
-    connList.innerHTML = "";
-    data.connections.forEach(conn => {
-        connList.innerHTML += `
-            <span class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold mr-2 mb-2 flex items-center">
-                <i class="fa-solid fa-circle-dot text-indigo-400 mr-2"></i>
-                ${conn.name}
-            </span>`;
-    });
-    
-    // 8. Decision Header / Cooldown Status
-    document.getElementById("cooldown-status").innerText = data.cooldown_status;
-    document.getElementById("decision-header").innerText = data.decision;
-    document.getElementById("decision-detail").innerText = data.decision_detail;
-    
-    // 9. Kirim ke Audit Log
-    addAuditLog(data);
+    document.getElementById("decision-header").innerText = d.decision;
+    document.getElementById("decision-detail").innerText = d.thought;
+    document.getElementById("cooldown-status").innerText = d.can_act ? "READY TO ACT" : "COOLDOWN (30s)";
+
+    // Inventory List Grouping
+    const bagHtml = d.bag_items.map(i => `<li>• ${i.name} (T${i.tier})</li>`).join("");
+    document.getElementById("bag-items").innerHTML = bagHtml || "<li>Tas Kosong</li>";
+
+    const groundHtml = d.ground_items.map(i => `<li>• ${i.name} (T${i.tier})</li>`).join("");
+    document.getElementById("ground-items").innerHTML = groundHtml || "<li>No Loot</li>";
+
+    addAuditRecord(d);
 }
 
-const loggedTurns = new Set();
-function addAuditLog(data) {
-    const key = `${data.game_id}-${data.turn}-${data.decision}`;
-    if (loggedTurns.has(key)) return; 
-    loggedTurns.add(key);
-    
-    const auditBody = document.getElementById("audit-log-body");
-    
-    // Bersihkan placeholder jika ini log pertama
-    if (loggedTurns.size === 1) {
-        auditBody.innerHTML = "";
-    }
-    
+function addAuditRecord(d) {
+    const key = `${d.turn}-${d.decision}`;
+    if (auditHistory.some(a => a.key === key)) return;
+
+    const record = {
+        key: key,
+        turn: d.turn,
+        mode: d.mode,
+        action: d.decision,
+        detail: d.decision_detail,
+        thought: d.thought,
+        stats: `HP:${d.hp} EP:${d.ep} Loc:${d.location_name}`
+    };
+
+    auditHistory.unshift(record);
+    if (auditHistory.length > 100) auditHistory.pop();
+
+    const body = document.getElementById("audit-log-body");
+    if (auditHistory.length === 1) body.innerHTML = "";
+
     const row = document.createElement("tr");
-    row.className = "border-b border-slate-900 hover:bg-slate-900/50 transition-colors";
-    
-    const timeStr = new Date().toLocaleTimeString();
-    
+    row.className = "border-b border-slate-800/50 hover:bg-indigo-900/10 transition-colors";
     row.innerHTML = `
-        <td class="p-3 text-slate-500 font-mono text-[10px]">${timeStr}</td>
-        <td class="p-3 text-indigo-400 font-bold font-mono">T-${String(data.turn).padStart(2, '0')}</td>
-        <td class="p-3"><span class="bg-slate-900 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-800">${data.decision}</span></td>
-        <td class="p-3 text-slate-300 font-medium">${data.decision_detail}</td>
-        <td class="p-3 italic text-slate-400 font-serif">${data.thought}</td>
+        <td class="p-2 text-indigo-400 font-bold">T-${d.turn}</td>
+        <td class="p-2 text-slate-500 font-bold">${d.mode}</td>
+        <td class="p-2 text-slate-200">${d.decision}</td>
+        <td class="p-2 italic text-slate-400">${d.thought}</td>
+        <td class="p-2 text-slate-500 text-[9px]">${record.stats}</td>
     `;
-    
-    auditBody.insertBefore(row, auditBody.firstChild); // Masukkan ke baris paling atas
+    body.insertBefore(row, body.firstChild);
 }
 
-window.onload = function() {
-    connect();
-};
+function copyAuditLog() {
+    if (auditHistory.length === 0) return alert("Belum ada data untuk di copy.");
+    
+    const text = auditHistory.map(r => 
+        `[TURN ${r.turn}] [MODE ${r.mode}] ACTION: ${r.action}\n` +
+        `DETAIL: ${r.detail}\n` +
+        `REASON: ${r.thought}\n` +
+        `STATS: ${r.stats}\n` +
+        `----------------------------------------`
+    ).join("\n");
+
+    navigator.clipboard.writeText(text).then(() => {
+        alert("AUDIT LOG COPIED! Silakan tempel (Ctrl+V) ke chat AI untuk dianalisis.");
+    });
+}
+
+window.onload = connect;
